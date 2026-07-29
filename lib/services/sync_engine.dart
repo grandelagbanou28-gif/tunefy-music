@@ -40,11 +40,11 @@ class SyncContent {
   String get dedupKey => '${title.toLowerCase().trim()}_${artist.toLowerCase().trim()}';
   String get sourcePriority {
     switch (source) {
-      case 'itunes': return '1';
-      case 'audius': return '2';
-      case 'muzo': return '3';
-      case 'jamendo': return '4';
-      default: return '5';
+      case 'itunes': return '01';
+      case 'audius': return '02';
+      case 'muzo': return '03';
+      case 'jamendo': return '04';
+      default: return '05';
     }
   }
 }
@@ -81,8 +81,8 @@ class SyncEngine {
       for (final a in batch) {
         final existing = albums.indexWhere((e) => e.dedupKey == a.dedupKey);
         if (existing >= 0) {
-          if (a.sourcePriority < albums[existing].sourcePriority) {
-            albums[existing] = a;
+           if (a.sourcePriority.compareTo(albums[existing].sourcePriority) < 0) {
+             albums[existing] = a;
           }
         } else {
           albums.add(a);
@@ -106,8 +106,8 @@ class SyncEngine {
       for (final t in batch) {
         final existing = singles.indexWhere((e) => e.dedupKey == t.dedupKey);
         if (existing >= 0) {
-          if (t.sourcePriority < singles[existing].sourcePriority) {
-            singles[existing] = t;
+           if (t.sourcePriority.compareTo(singles[existing].sourcePriority) < 0) {
+             singles[existing] = t;
           }
         } else {
           singles.add(t);
@@ -135,8 +135,8 @@ class SyncEngine {
       for (final p in batch) {
         final existing = playlists.indexWhere((e) => e.dedupKey == p.dedupKey);
         if (existing >= 0) {
-          if (p.sourcePriority < playlists[existing].sourcePriority) {
-            playlists[existing] = p;
+           if (p.sourcePriority.compareTo(playlists[existing].sourcePriority) < 0) {
+             playlists[existing] = p;
           }
         } else {
           playlists.add(p);
@@ -187,7 +187,7 @@ class SyncEngine {
             type: 'album',
             year: int.tryParse(a.year) ?? year,
             trackCount: a.trackCount,
-            collectionId: a.collectionId,
+             collectionId: a.collectionId?.toString(),
             browseId: a.browseId,
           ));
         }

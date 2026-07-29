@@ -9,6 +9,7 @@ import 'package:tunefy/services/liked_service.dart';
 import 'package:tunefy/services/premium_service.dart';
 import 'package:tunefy/services/muzo_service.dart';
 import 'package:tunefy/services/music_catalog_service.dart';
+import 'package:tunefy/services/sync_engine.dart';
 
 class HomeData {
   HomeData._();
@@ -40,6 +41,14 @@ class HomeData {
     _loaded = true;
     _loading = true;
     debugPrint('HomeData: load() started');
+
+    // Sync content from all APIs first
+    try {
+      await SyncEngine.syncAll().timeout(const Duration(seconds: 30));
+      debugPrint('HomeData: sync complete (${SyncEngine.count} items)');
+    } catch (_) {
+      debugPrint('HomeData: sync failed, continuing with charts');
+    }
 
     // Charge les données iTunes directement
     try {
@@ -94,12 +103,12 @@ class HomeData {
         MusicCatalogService.searchAlbums('popular', limit: 15),
         MusicCatalogService.searchAlbums('trending', limit: 15),
         MuzoService.searchAlbumsByGenre('popular', limit: 10),
-      ]).timeout(const Duration(seconds: 30));
+       ]).timeout(const Duration(seconds: 30));
       final artists = r1[0] as List<HomeArtist>;
       final albums = <HomeAlbum>[
         ...(r1[1] as List<HomeAlbum>),
-        ...(r1[2] as List<CatalogAlbum>).map(_catToHomeAlbum),
-        ...(r1[3] as List<CatalogAlbum>).map(_catToHomeAlbum),
+        ...(r1[2] as List<CatalogAlbum>).map(_catalogToHomeAlbum),
+        ...(r1[3] as List<CatalogAlbum>).map(_catalogToHomeAlbum),
         ...(r1[4] as List<HomeAlbum>),
       ]..retainWhere((a) => a.year == '2026');
       final seen = <String>{};
@@ -153,26 +162,18 @@ class HomeData {
       } catch (_) {}
       podcasts.shuffle(Random());
 
-      // Batch 6: nouveaux albums = rap FR + US uniquement
-      List<HomeAlbum> rapFRalbums = [], rapUSalbums = [], catNew = [];
-      try {
-         final r6 = await Future.wait([
-          ItunesService.fetchAlbumsByGenre('rap français', limit: 15, minDate: DateTime(2026, 7, 22), maxDate: DateTime(2026, 7, 29, 23, 59, 59)),
-          ItunesService.fetchAlbumsByGenre('rap us', limit: 15, minDate: DateTime(2026, 7, 22), maxDate: DateTime(2026, 7, 29, 23, 59, 59)),
-          MusicCatalogService.searchAlbums('rap francais nouveau', limit: 15),
-          MusicCatalogService.searchAlbums('rap us new', limit: 15),
-        ]).timeout(const Duration(seconds: 30));
-        rapFRalbums = r6[0] as List<HomeAlbum>;
-        rapUSalbums = r6[1] as List<HomeAlbum>;
-        catNew = ((r6[2] as List<CatalogAlbum>)
-                ..addAll(r6[3] as List<CatalogAlbum>))
-            .where((a) => a.artist.toLowerCase().contains('rap'))
-            .map(_catToHomeAlbum).toList();
-      } catch (_) {}
-      final newAlbums = <HomeAlbum>[...rapFRalbums, ...rapUSalbums, ...catNew]
-        ..shuffle(Random());
-      final seen2 = <String>{};
-       final newAlbumsFiltered = newAlbums.where((a) => seen2.add(a.title.toLowerCase())).toList();
+       // Batch 6: nouveaux albums — utilise SyncEngine (déjà sync à load())
+       final syncedNewAlbums = SyncEngine.getAlbums();
+       final now = DateTime.now();
+       final rapFiltered = syncedNewAlbums
+           .where((a) => a.year == now.year)
+           .toList();
+       rapFiltered.shuffle(Random());
+       final seen2 = <String>{};
+       final newAlbumsFiltered = rapFiltered
+           .where((a) => seen2.add(a.title.toLowerCase()))
+           .take(15)
+           .toList();
 
       final rapWorld = [...rap, ...rapFR.take(30), ...afro.take(15)]..shuffle(Random());
       final drillWorld = [...drill, ...rapFR.take(10), ...afro.take(10)]..shuffle(Random());
@@ -260,8 +261,8 @@ class HomeData {
       _ts('Mix Quotidien', _slice(global, 30, 10)),
       _ts('Nouvelles sorties', _slice(nuevas, 0, 10)),
       _ts('Découvertes de la semaine', _slice(decouvertes, 0, 10)),
-       _als('Nouveaux albums', newAlbumsFiltered.take(10).toList()),
-      _als('Albums populaires', albums.take(25).toList()),
+        _als('Nouveaux albums', newAlbumsFiltered.take(10).map((sc) => _syncToHomeAlbum(sc)).toList()),
+       _als('Albums populaires', albums.take(25).toList()),
       _ts('Mix Drill', _slice(drillWorld, 0, 10)),
       _ts('Mix Trap', _slice(rapWorld, 0, 10)),
       _ts('Rap Français', rapFR.take(12).toList()),
@@ -312,7 +313,7 @@ class HomeData {
   static HomeSection _als(String title, List<HomeAlbum> albums) =>
       HomeSection(title: title, type: HomeSectionType.albums, albums: albums);
 
-  static HomeAlbum _catToHomeAlbum(CatalogAlbum ca) => HomeAlbum(
+  static HomeAlbum _catalogToHomeAlbum(CatalogAlbum ca) => HomeAlbum(
     title: ca.title,
     artist: ca.artist,
     image: ca.imageUrl ?? '',
@@ -320,6 +321,20 @@ class HomeData {
     trackCount: ca.trackCount,
     browseId: ca.id,
   );
+
+  static HomeAlbum _syncToHomeAlbum(SyncContent sc) => HomeAlbum(
+    title: sc.title,
+    artist: sc.artist,
+    image: sc.imageUrl ?? '',
+    imageUrl: sc.imageUrl,
+    trackCount: sc.trackCount ?? 0,
+    browseId: sc.browseId,
+     collectionId: sc.collectionId != null ? int.tryParse(sc.collectionId!) : null,
+    year: sc.year.toString(),
+  );
+
+  static List<HomeAlbum> _syncAlbumsToHomeAlbums(List<SyncContent> items) =>
+      items.map((sc) => _syncToHomeAlbum(sc)).toList();
 
   static List<HomeTrack> _searchResultsToTracks(List<SearchResult> results) {
     return results.map((r) {
