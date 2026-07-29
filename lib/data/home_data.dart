@@ -7,6 +7,8 @@ import 'package:tunefy/services/itunes_service.dart';
 import 'package:tunefy/services/search_service.dart';
 import 'package:tunefy/services/liked_service.dart';
 import 'package:tunefy/services/premium_service.dart';
+import 'package:tunefy/services/muzo_service.dart';
+import 'package:tunefy/services/music_catalog_service.dart';
 
 class HomeData {
   HomeData._();
@@ -85,13 +87,27 @@ class HomeData {
     try {
       final y = DateTime.now().year;
 
-      // Batch 1: artists & albums (iTunes pour images, Muzo pour browseId)
+      // Batch 1: artists & albums (iTunes + Catalog service)
       final r1 = await Future.wait([
         ItunesService.fetchChartArtists(limit: 25),
         ItunesService.fetchChartAlbums(limit: 25),
+        MusicCatalogService.searchAlbums('popular', limit: 15),
+        MusicCatalogService.searchAlbums('trending', limit: 15),
+        MuzoService.searchAlbumsByGenre('popular', limit: 10),
       ]).timeout(const Duration(seconds: 30));
       final artists = r1[0] as List<HomeArtist>;
       final albums = r1[1] as List<HomeAlbum>;
+      final catAlbums1 = (r1[2] as List<CatalogAlbum>).map(_catToHomeAlbum);
+      final catAlbums2 = (r1[3] as List<CatalogAlbum>).map(_catToHomeAlbum);
+      final muzoAlbums = r1[4] as List<HomeAlbum>;
+      final allAlbums = <HomeAlbum>[
+        ...albums, ...catAlbums1, ...catAlbums2, ...muzoAlbums,
+      ];
+      final seen = <String>{};
+      allAlbums.retainWhere((a) => seen.add(a.title.toLowerCase()));
+      albums
+        ..clear()
+        ..addAll(allAlbums);
 
       // Batch 2: genres (utilisés pour le global + sections spécifiques)
       final r2 = await Future.wait([
@@ -141,21 +157,28 @@ class HomeData {
       } catch (_) {}
       podcasts.shuffle(Random());
 
-      // Batch 6: nouveaux albums par genre (iTunes pour images)
-      List<HomeAlbum> rapFRalbums = [], afroAlbums = [], popAlbums = [];
+      // Batch 6: nouveaux albums par genre (iTunes + Catalog)
+      List<HomeAlbum> rapFRalbums = [], afroAlbums = [], popAlbums = [], catNew = [];
       try {
         final r6 = await Future.wait([
           ItunesService.fetchAlbumsByGenre('rap français', limit: 10),
           ItunesService.fetchAlbumsByGenre('afrobeat', limit: 10),
           ItunesService.fetchAlbumsByGenre('pop', limit: 10),
+          MusicCatalogService.searchAlbums('new release', limit: 15),
+          MusicCatalogService.searchAlbums('2026', limit: 15),
         ]).timeout(const Duration(seconds: 30));
         rapFRalbums = r6[0] as List<HomeAlbum>;
         afroAlbums = r6[1] as List<HomeAlbum>;
         popAlbums = r6[2] as List<HomeAlbum>;
+        catNew = (r6[3] as List<CatalogAlbum>).map(_catToHomeAlbum).toList()
+          ..addAll((r6[4] as List<CatalogAlbum>).map(_catToHomeAlbum));
       } catch (_) {}
       final newAlbums = <HomeAlbum>[
-        ...rapFRalbums, ...afroAlbums, ...popAlbums,
-      ]..shuffle(Random());
+        ...rapFRalbums, ...afroAlbums, ...popAlbums, ...catNew,
+      ]
+        ..shuffle(Random());
+      final seen2 = <String>{};
+      newAlbums.retainWhere((a) => seen2.add(a.title.toLowerCase()));
 
       final rapWorld = [...rap, ...rapFR.take(30), ...afro.take(15)]..shuffle(Random());
       final drillWorld = [...drill, ...rapFR.take(10), ...afro.take(10)]..shuffle(Random());
@@ -294,6 +317,15 @@ class HomeData {
       HomeSection(title: title, type: HomeSectionType.artists, artists: artists);
   static HomeSection _als(String title, List<HomeAlbum> albums) =>
       HomeSection(title: title, type: HomeSectionType.albums, albums: albums);
+
+  static HomeAlbum _catToHomeAlbum(CatalogAlbum ca) => HomeAlbum(
+    title: ca.title,
+    artist: ca.artist,
+    image: ca.imageUrl ?? '',
+    imageUrl: ca.imageUrl,
+    trackCount: ca.trackCount,
+    browseId: ca.id,
+  );
 
   static List<HomeTrack> _searchResultsToTracks(List<SearchResult> results) {
     return results.map((r) {
