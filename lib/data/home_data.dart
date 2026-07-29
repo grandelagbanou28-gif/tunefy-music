@@ -156,11 +156,11 @@ class HomeData {
       // Batch 6: nouveaux albums = rap FR + US uniquement
       List<HomeAlbum> rapFRalbums = [], rapUSalbums = [], catNew = [];
       try {
-        final r6 = await Future.wait([
-          ItunesService.fetchAlbumsByGenre('rap français', limit: 10),
-          ItunesService.fetchAlbumsByGenre('rap us', limit: 10),
-          MusicCatalogService.searchAlbums('rap francais nouveau', limit: 10),
-          MusicCatalogService.searchAlbums('rap us new', limit: 10),
+         final r6 = await Future.wait([
+          ItunesService.fetchAlbumsByGenre('rap français', limit: 15, minDate: DateTime(2026, 7, 22), maxDate: DateTime(2026, 7, 29, 23, 59, 59)),
+          ItunesService.fetchAlbumsByGenre('rap us', limit: 15, minDate: DateTime(2026, 7, 22), maxDate: DateTime(2026, 7, 29, 23, 59, 59)),
+          MusicCatalogService.searchAlbums('rap francais nouveau', limit: 15),
+          MusicCatalogService.searchAlbums('rap us new', limit: 15),
         ]).timeout(const Duration(seconds: 30));
         rapFRalbums = r6[0] as List<HomeAlbum>;
         rapUSalbums = r6[1] as List<HomeAlbum>;
@@ -172,7 +172,7 @@ class HomeData {
       final newAlbums = <HomeAlbum>[...rapFRalbums, ...rapUSalbums, ...catNew]
         ..shuffle(Random());
       final seen2 = <String>{};
-       final newAlbumsFiltered = newAlbums.where((a) => seen2.add(a.title.toLowerCase()) && a.year == '2026').toList();
+       final newAlbumsFiltered = newAlbums.where((a) => seen2.add(a.title.toLowerCase())).toList();
 
       final rapWorld = [...rap, ...rapFR.take(30), ...afro.take(15)]..shuffle(Random());
       final drillWorld = [...drill, ...rapFR.take(10), ...afro.take(10)]..shuffle(Random());
