@@ -321,6 +321,28 @@ class ItunesService {
     }
   }
 
+  static Future<Map<String, dynamic>?> fetchAlbumMetadata(int collectionId) async {
+    try {
+      final r = await _dio.get('$_base/lookup', queryParameters: {
+        'id': collectionId, 'entity': 'song', 'limit': 1,
+      });
+      final results = _extractResults(r.data);
+      if (results.isEmpty) return null;
+      final f = results.first as Map;
+      return {
+        'trackCount': _toInt(f['trackCount']),
+        'collectionName': f['collectionName'] as String? ?? '',
+        'artistName': f['artistName'] as String? ?? '',
+        'artworkUrl100': f['artworkUrl100'] as String?,
+        'releaseDate': f['releaseDate'] as String?,
+        'collectionId': f['collectionId'],
+      };
+    } catch (e) {
+      debugPrint('ItunesService: fetchAlbumMetadata error: $e');
+      return null;
+    }
+  }
+
   static Future<List<Map<String, String>>> fetchArtistPlaylists(String artistName, {int limit = 5}) async {
     if (_artistPlaylistsCache.containsKey(artistName)) return _artistPlaylistsCache[artistName]!;
     try {

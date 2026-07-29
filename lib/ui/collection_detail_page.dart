@@ -184,65 +184,97 @@ class _CollectionDetailPageState extends State<CollectionDetailPage> {
     debugPrint('_loadAlbumTracks: "$albumTitle" by "$artistName", collectionId=$collectionId, browseId=$browseId');
     _isLoading = true;
     setState(() {});
-    List<HomeTrack> tracks = [];
+    List<HomeTrack> allTracks = [];
+    int expectedCount = 0;
+    final Set<String> seenIds = {};
 
-    // 1) iTunes Lookup by collectionId (fastest & most reliable)
+    if (collectionId != null) {
+      final meta = await ItunesService.fetchAlbumMetadata(collectionId);
+      if (meta != null) {
+        expectedCount = meta['trackCount'] as int? ?? 0;
+        debugPrint('  iTunes metadata: trackCount=$expectedCount');
+      }
+    }
+
+    // 1) iTunes Lookup by collectionId — get ALL tracks (up to 100)
     if (collectionId != null) {
       try {
-        tracks = await ItunesService.fetchAlbumTracks(collectionId);
-        debugPrint('  iTunes Lookup(collectionId=$collectionId): ${tracks.length} tracks');
+        final tracks = await ItunesService.fetchAlbumTracks(collectionId);
+        tracks.removeWhere((t) => !seenIds.add(t.videoId));
+        allTracks.addAll(tracks);
+        debugPrint('  iTunes Lookup(collectionId=$collectionId): ${tracks.length} tracks (total=$expectedCount, have=${allTracks.length})');
       } catch (_) { debugPrint('  iTunes Lookup FAILED'); }
-      if (tracks.isNotEmpty) return _finishLoading(tracks);
     }
 
-    // 2) iTunes search by title (lenient match)
-    if (tracks.isEmpty) {
+    // 2) iTunes search by title — get all matching tracks (up to 50, no early return)
+    if (allTracks.isEmpty || (expectedCount > 0 && allTracks.length < expectedCount)) {
       try {
-        tracks = await ItunesService.fetchAlbumTracksByTitle(albumTitle, artistName);
-        debugPrint('  iTunes ByTitle: ${tracks.length} tracks');
+        final tracks = await ItunesService.fetchAlbumTracksByTitle(albumTitle, artistName);
+        final newTracks = tracks.where((t) => seenIds.add(t.videoId)).toList();
+        allTracks.addAll(newTracks);
+        debugPrint('  iTunes ByTitle: ${newTracks.length} new tracks (total=${allTracks.length}/$expectedCount)');
       } catch (_) { debugPrint('  iTunes ByTitle FAILED'); }
-      if (tracks.isNotEmpty) return _finishLoading(tracks);
+      if (expectedCount > 0 && allTracks.length >= expectedCount) {
+        return _finishLoading(allTracks);
+      }
     }
 
-    // 3) Muzo searchSongs (YouTube videoIds, works even if album details endpoint is broken)
-    if (tracks.isEmpty) {
+    // 3) Muzo searchSongs — broad query, get as many as possible (up to 50), no early return
+    if (allTracks.isEmpty || (expectedCount > 0 && allTracks.length < expectedCount)) {
       try {
-        final muzoTracks = await MuzoService.searchSongs('$albumTitle $artistName', limit: 30);
-        if (muzoTracks.isNotEmpty) tracks = muzoTracks;
-        debugPrint('  Muzo searchSongs: ${tracks.length} tracks');
+        final muzoTracks = await MuzoService.searchSongs('$albumTitle $artistName', limit: 50);
+        final newTracks = muzoTracks.where((t) => seenIds.add(t.videoId)).toList();
+        allTracks.addAll(newTracks);
+        debugPrint('  Muzo searchSongs: ${newTracks.length} new tracks (total=${allTracks.length}/$expectedCount)');
       } catch (_) { debugPrint('  Muzo searchSongs FAILED'); }
-      if (tracks.isNotEmpty) return _finishLoading(tracks);
+      if (expectedCount > 0 && allTracks.length >= expectedCount) {
+        return _finishLoading(allTracks);
+      }
     }
 
-    // 4) Catalog service (Audius + Jamendo, real audio URLs)
-    if (tracks.isEmpty && widget.browseId != null) {
+    // 4) Catalog service (Audius + Jamendo, real audio URLs) — no early return
+    if (widget.browseId != null) {
       try {
         final catTracks = widget.isAlbumView
             ? await MusicCatalogService.getAlbumTracks(widget.browseId!)
             : await MusicCatalogService.getPlaylistTracks(widget.browseId!);
-        if (catTracks.isNotEmpty) {
-          tracks = catTracks.map((ct) => HomeTrack(
-            videoId: ct.id,
-            title: ct.title,
-            artist: ct.artist,
-            duration: ct.durationMs > 0 ? '${(ct.durationMs / 60000).floor()}:${((ct.durationMs % 60000) / 1000).floor().toString().padLeft(2, '0')}' : '',
-            imageUrl: ct.imageUrl,
-          )).toList();
-        }
-        debugPrint('  Catalog service: ${tracks.length} tracks');
+        final mapped = catTracks.map((ct) => HomeTrack(
+          videoId: ct.id,
+          title: ct.title,
+          artist: ct.artist,
+          duration: ct.durationMs > 0 ? '${(ct.durationMs / 60000).floor()}:${((ct.durationMs % 60000) / 1000).floor().toString().padLeft(2, '0')}' : '',
+          imageUrl: ct.imageUrl,
+        )).toList();
+        final newTracks = mapped.where((t) => seenIds.add(t.videoId)).toList();
+        allTracks.addAll(newTracks);
+        debugPrint('  Catalog service: ${newTracks.length} new tracks (total=${allTracks.length}/$expectedCount)');
       } catch (_) { debugPrint('  Catalog service FAILED'); }
-      if (tracks.isNotEmpty) return _finishLoading(tracks);
+      if (expectedCount > 0 && allTracks.length >= expectedCount) {
+        return _finishLoading(allTracks);
+      }
     }
 
-    // 5) Artist top tracks (last resort)
-    if (tracks.isEmpty) {
+    // 5) Artist top tracks — last resort, no early return, add only missing ones
+    if (allTracks.isEmpty) {
       try {
-        tracks = await ItunesService.fetchArtistTopTracks(artistName);
-        debugPrint('  iTunes artist top tracks: ${tracks.length} tracks');
+        final topTracks = await ItunesService.fetchArtistTopTracks(artistName);
+        final newTracks = topTracks.where((t) => seenIds.add(t.videoId)).toList();
+        allTracks.addAll(newTracks);
+        debugPrint('  iTunes artist top tracks: ${newTracks.length} new tracks (total=${allTracks.length})');
       } catch (_) { debugPrint('  iTunes artist top tracks FAILED'); }
     }
 
-    _finishLoading(tracks);
+    // 6) If still only 1 track and album has many, try broader search
+    if (allTracks.length <= 1 && expectedCount > 1) {
+      try {
+        final broad = await ItunesService.fetchAlbumTracksByTitle(albumTitle, '');
+        final newTracks = broad.where((t) => seenIds.add(t.videoId)).toList();
+        allTracks.addAll(newTracks);
+        debugPrint('  iTunes broad search: ${newTracks.length} new tracks (total=${allTracks.length})');
+      } catch (_) {}
+    }
+
+    _finishLoading(allTracks);
   }
 
   void _finishLoading(List<HomeTrack> tracks) {

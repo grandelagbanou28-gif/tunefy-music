@@ -1008,27 +1008,40 @@ class SearchService {
       if (browseId.startsWith('PL')) {
         effectiveBrowseId = 'VL$browseId';
       }
-      final payload = {
-        'context': {
-          'client': {
-            'clientName': 'WEB',
-            'clientVersion': '2.20241022.01.00',
-            'hl': 'en',
-            'gl': 'US',
+      final allResults = <SearchResult>[];
+      String? continuation;
+      do {
+        final payload = {
+          'context': {
+            'client': {
+              'clientName': 'WEB',
+              'clientVersion': '2.20241022.01.00',
+              'hl': 'en',
+              'gl': 'US',
+            },
           },
-        },
-        'browseId': effectiveBrowseId,
-      };
-      final response = await http.post(
-        Uri.parse('$_ytUrl/browse?key=$_ytApiKey'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
+          if (continuation != null) 'continuation': continuation,
+          if (continuation == null) 'browseId': effectiveBrowseId,
+        };
+        final endpoint = continuation != null ? '$_ytUrl/browse?key=$_ytApiKey' : '$_ytUrl/browse?key=$_ytApiKey';
+        final response = await http.post(
+          Uri.parse(endpoint),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(payload),
+        ).timeout(const Duration(seconds: 15));
+        if (response.statusCode != 200) break;
         final data = jsonDecode(response.body);
-        return _parseBrowseResults(data, limit);
-      }
+        final results = _parseBrowseResults(data, limit);
+        if (results.isEmpty) break;
+        for (final r in results) {
+          if (!allResults.any((existing) => existing.id == r.id)) {
+            allResults.add(r);
+          }
+        }
+        continuation = _extractContinuation(data);
+        if (allResults.length >= limit) break;
+      } while (continuation != null);
+      return allResults.take(limit).toList();
     } catch (e) {
       debugPrint('SearchService: browseAlbumOrPlaylist error: $e');
     }
@@ -1123,6 +1136,62 @@ class SearchService {
       debugPrint('SearchService: _parseBrowseResults error: $e');
     }
     return results;
+  }
+
+  static String? _extractContinuation(dynamic data) {
+    try {
+      final tabs = data['contents']?['twoColumnBrowseResultsRenderer']?['tabs'] as List?;
+      if (tabs == null) return null;
+      final tabRenderer = tabs.firstOrNull?['tabRenderer'];
+      final content = tabRenderer?['content'];
+      final secList = content?['sectionListRenderer'];
+      final contents = secList?['contents'] as List?;
+      if (contents == null) return null;
+      for (final section in contents) {
+        final musicShelf = section['musicShelfRenderer'];
+        if (musicShelf != null) {
+          final continuations = musicShelf['continuations'] as List?;
+          if (continuations == null) continue;
+          for (final cont in continuations) {
+            final nextData = cont['nextContinuationData'];
+            if (nextData != null && nextData['continuation'] is String) {
+              return nextData['continuation'] as String;
+            }
+          }
+        }
+        final musicPlaylistShelf = section['musicPlaylistShelfRenderer'];
+        if (musicPlaylistShelf != null) {
+          final continuations = musicPlaylistShelf['continuations'] as List?;
+          if (continuations == null) continue;
+          for (final cont in continuations) {
+            final nextData = cont['nextContinuationData'];
+            if (nextData != null && nextData['continuation'] is String) {
+              return nextData['continuation'] as String;
+            }
+          }
+        }
+        final itemSection = section['itemSectionRenderer'];
+        if (itemSection != null) {
+          final items = itemSection['sectionListRenderer']?['contents'] as List?;
+          if (items != null) {
+            for (final subSection in items) {
+              final musicShelf = subSection['musicShelfRenderer'];
+              if (musicShelf != null) {
+                final continuations = musicShelf['continuations'] as List?;
+                if (continuations == null) continue;
+                for (final cont in continuations) {
+                  final nextData = cont['nextContinuationData'];
+                  if (nextData != null && nextData['continuation'] is String) {
+                    return nextData['continuation'] as String;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   static Future<List<SearchSuggestion>> getSuggestions(String query) async {
