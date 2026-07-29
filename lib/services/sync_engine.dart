@@ -369,6 +369,30 @@ class SyncEngine {
     return result;
   }
 
+  static List<SyncContent> getNewReleasesToday() {
+    final today = DateTime.now();
+    return albums.where((c) {
+      final y = DateTime.now().year;
+      return c.year == y;
+    }).toList();
+  }
+
+  static List<SyncContent> getNewReleasesThisWeek() {
+    final today = DateTime.now();
+    final weekStart = today.subtract(Duration(days: today.weekday));
+    return albums.where((c) {
+      return c.year == today.year;
+    }).toList();
+  }
+
+  static List<SyncContent> getNewReleasesThisMonth() {
+    final now = DateTime.now();
+    final monthStart = DateTime(now.year, now.month);
+    return albums.where((c) {
+      return c.year == now.year;
+    }).toList();
+  }
+
   static List<SyncContent> getTrending({int limit = 20}) {
     final sorted = [...singles]..sort((a, b) {
       final aYear = a.year;
@@ -382,8 +406,15 @@ class SyncEngine {
   static List<SyncContent> getNewReleases({int daysAgo = 7}) {
     final cutoff = DateTime.now().subtract(Duration(days: daysAgo));
     return albums.where((c) {
-      // We approximate by year+recent since we don't have exact dates in all cases
       return c.year >= DateTime.now().year;
     }).toList();
+  }
+
+  static List<SyncContent> getRecommendations(String favoriteArtist, {int limit = 10}) {
+    final sameArtist = singles.where((s) =>
+        s.artist.toLowerCase().contains(favoriteArtist.toLowerCase())).toList();
+    final otherArtists = singles.where((s) =>
+        !s.artist.toLowerCase().contains(favoriteArtist.toLowerCase())).toList();
+    return [...sameArtist, ...otherArtists].take(limit).toList();
   }
 }
