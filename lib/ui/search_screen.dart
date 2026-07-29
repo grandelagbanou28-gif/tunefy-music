@@ -6,9 +6,11 @@ import 'package:tunefy/bloc/search/search_state.dart';
 import 'package:tunefy/constants/constants.dart';
 import 'package:tunefy/services/search_service.dart';
 import 'package:tunefy/ui/track_detail_screen.dart';
+import 'package:tunefy/ui/collection_detail_page.dart';
 import 'package:tunefy/services/haptic_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:tunefy/theme/tunefy_theme.dart';
+import 'package:tunefy/models/home_track.dart';
 
 class SearchScreen extends StatefulWidget {
   final String? initialQuery;
@@ -246,6 +248,29 @@ class _SearchResults extends StatelessWidget {
 
   const _SearchResults({required this.results, required this.onPlay});
 
+  void _onTapResult(BuildContext context, SearchResult result) {
+    if (result.type == 'album' || result.type == 'playlist') {
+      final isAlbum = result.type == 'album';
+      final browseId = result.browseId ?? result.id.replaceFirst(RegExp(r'^audius_'), '');
+      Navigator.push(context, MaterialPageRoute(
+        builder: (_) => CollectionDetailPage(
+          heroTrack: HomeTrack(
+            videoId: result.videoId ?? result.id,
+            title: result.title,
+            artist: result.subtitle,
+            imageUrl: result.imageUrl ?? '',
+          ),
+          allTracks: [],
+          albumTitle: result.title,
+          albumImage: result.imageUrl,
+          isAlbumView: isAlbum,
+          isPlaylistView: !isAlbum,
+          browseId: browseId,
+        ),
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListView.builder(
@@ -255,6 +280,7 @@ class _SearchResults extends StatelessWidget {
         final typeIcon = _getTypeIcon(result.type);
         return ListTile(
           contentPadding: const EdgeInsets.symmetric(vertical: 4),
+          onTap: result.type != 'song' ? () => _onTapResult(context, result) : null,
           leading: ClipRRect(
             borderRadius: result.type == 'artist' ? BorderRadius.circular(25) : BorderRadius.circular(4),
             child: CachedNetworkImage(

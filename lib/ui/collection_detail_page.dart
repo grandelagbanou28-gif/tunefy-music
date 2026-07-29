@@ -6,6 +6,7 @@ import 'package:tunefy/models/home_track.dart';
 import 'package:tunefy/models/track.dart';
 import 'package:tunefy/services/itunes_service.dart';
 import 'package:tunefy/services/muzo_service.dart';
+import 'package:tunefy/services/music_catalog_service.dart';
 import 'package:tunefy/helpers/tunefy_helpers.dart';
 import 'package:tunefy/services/liked_service.dart';
 import 'package:tunefy/DI/service_locator.dart';
@@ -213,7 +214,27 @@ class _CollectionDetailPageState extends State<CollectionDetailPage> {
       if (tracks.isNotEmpty) return _finishLoading(tracks);
     }
 
-    // 4) Artist top tracks (last resort)
+    // 4) Catalog service (Audius + Jamendo, real audio URLs)
+    if (tracks.isEmpty && widget.browseId != null) {
+      try {
+        final catTracks = widget.isAlbumView
+            ? await MusicCatalogService.getAlbumTracks(widget.browseId!)
+            : await MusicCatalogService.getPlaylistTracks(widget.browseId!);
+        if (catTracks.isNotEmpty) {
+          tracks = catTracks.map((ct) => HomeTrack(
+            videoId: ct.id,
+            title: ct.title,
+            artist: ct.artist,
+            duration: ct.durationMs > 0 ? '${(ct.durationMs / 60000).floor()}:${((ct.durationMs % 60000) / 1000).floor().toString().padLeft(2, '0')}' : '',
+            imageUrl: ct.imageUrl,
+          )).toList();
+        }
+        debugPrint('  Catalog service: ${tracks.length} tracks');
+      } catch (_) { debugPrint('  Catalog service FAILED'); }
+      if (tracks.isNotEmpty) return _finishLoading(tracks);
+    }
+
+    // 5) Artist top tracks (last resort)
     if (tracks.isEmpty) {
       try {
         tracks = await ItunesService.fetchArtistTopTracks(artistName);
