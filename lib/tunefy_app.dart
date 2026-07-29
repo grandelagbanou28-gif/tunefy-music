@@ -26,6 +26,7 @@ import 'package:tunefy/ui/qr_scanner_screen.dart';
 import 'package:tunefy/ui/liked_tracks_page.dart';
 import 'package:tunefy/widgets/add_to_playlist_sheet.dart';
 import 'package:tunefy/widgets/device_sheet.dart';
+import 'package:tunefy/widgets/tunefy_toast.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:just_audio/just_audio.dart';
@@ -849,7 +850,16 @@ class _TunefyHomeState extends State<TunefyHome> {
           } catch (_) { debugPrint('  iTunes search by title FAILED'); }
         }
 
-        // 3) Last resort: artist top tracks
+        // 3) Muzo searchSongs (YouTube videoIds)
+        if (albumTracks.isEmpty) {
+          try {
+            final muzoTracks = await MuzoService.searchSongs('${album.title} ${album.artist}', limit: 30);
+            if (muzoTracks.isNotEmpty) albumTracks = muzoTracks;
+            debugPrint('  Muzo searchSongs: ${albumTracks.length} tracks');
+          } catch (_) { debugPrint('  Muzo searchSongs FAILED'); }
+        }
+
+        // 4) Artist top tracks (last resort)
         if (albumTracks.isEmpty) {
           try {
             albumTracks = await ItunesService.fetchArtistTopTracks(album.artist);
@@ -1877,15 +1887,11 @@ class _TunefyHomeState extends State<TunefyHome> {
               Share.share('${activeTrack.title} - ${activeTrack.artist}');
               Navigator.pop(ctx);
             }),
-            _fullPlayerMenuItem(Icons.favorite_border, LikedService().isLiked(activeTrack.videoId) ? 'Retiré des Titres likés' : 'Ajouter aux Titres likés', () {
+            _fullPlayerMenuItem(LikedService().isLiked(activeTrack.videoId) ? Icons.favorite : Icons.favorite_border, LikedService().isLiked(activeTrack.videoId) ? 'Retiré des Titres likés' : 'Ajouter aux Titres likés', () {
               final trackModel = Track(videoId: activeTrack.videoId, title: activeTrack.title, artist: activeTrack.artist, albumImage: activeTrack.imageUrl);
               LikedService().toggle(trackModel);
               Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: const Text('Mis à jour', style: TextStyle(fontFamily: 'AM', color: TunefyColors.white)),
-                backgroundColor: TunefyColors.darkCard, duration: const Duration(seconds: 1),
-                behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ));
+              TunefyToast.show(context, LikedService().isLiked(activeTrack.videoId) ? 'Ajouté aux Titres likés' : 'Retiré des Titres likés', icon: ToastIcon.heart);
             }),
             _fullPlayerMenuItem(Icons.playlist_add, 'Ajouter à la playlist', () {
               Navigator.pop(ctx);
@@ -1897,12 +1903,7 @@ class _TunefyHomeState extends State<TunefyHome> {
               Navigator.pop(ctx);
               final trackModel = Track(videoId: activeTrack.videoId, title: activeTrack.title, artist: activeTrack.artist, albumImage: activeTrack.imageUrl, duration: parseDuration(activeTrack.duration));
               playerProvider.addToQueue(trackModel);
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text('${activeTrack.title} ajouté à la file d\'attente',
-                  style: const TextStyle(fontFamily: 'AM', color: TunefyColors.white)),
-                backgroundColor: TunefyColors.darkCard, duration: const Duration(seconds: 1),
-                behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ));
+              TunefyToast.show(context, '${activeTrack.title} ajouté à la file d\'attente', icon: ToastIcon.queue);
             }),
             _fullPlayerMenuItem(Icons.album_outlined, 'Accéder à l\'album', () {
               Navigator.pop(ctx);

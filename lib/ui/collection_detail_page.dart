@@ -10,6 +10,7 @@ import 'package:tunefy/helpers/tunefy_helpers.dart';
 import 'package:tunefy/services/liked_service.dart';
 import 'package:tunefy/DI/service_locator.dart';
 import 'package:tunefy/widgets/add_to_playlist_sheet.dart';
+import 'package:tunefy/widgets/tunefy_toast.dart';
 import 'package:tunefy/theme/tunefy_colors.dart';
 import 'dart:math' as math;
 
@@ -202,7 +203,17 @@ class _CollectionDetailPageState extends State<CollectionDetailPage> {
       if (tracks.isNotEmpty) return _finishLoading(tracks);
     }
 
-    // 3) Last resort: artist top tracks
+    // 3) Muzo searchSongs (YouTube videoIds, works even if album details endpoint is broken)
+    if (tracks.isEmpty) {
+      try {
+        final muzoTracks = await MuzoService.searchSongs('$albumTitle $artistName', limit: 30);
+        if (muzoTracks.isNotEmpty) tracks = muzoTracks;
+        debugPrint('  Muzo searchSongs: ${tracks.length} tracks');
+      } catch (_) { debugPrint('  Muzo searchSongs FAILED'); }
+      if (tracks.isNotEmpty) return _finishLoading(tracks);
+    }
+
+    // 4) Artist top tracks (last resort)
     if (tracks.isEmpty) {
       try {
         tracks = await ItunesService.fetchArtistTopTracks(artistName);
@@ -823,7 +834,7 @@ Share.share('$title - ${widget.heroTrack.artist}');
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       isScrollControlled: true,
       builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
+        initialChildSize: 0.6,
         minChildSize: 0.3,
         maxChildSize: 0.9,
         expand: false,
@@ -859,34 +870,40 @@ Share.share('$title - ${widget.heroTrack.artist}');
                 children: [
                   _menuItem(Icons.share_outlined, 'Partager', onTap: () {
                     final title = widget.albumTitle ?? widget.heroTrack.title;
-                    Share.share('$title - ${widget.heroTrack.artist}');
+                    Share.share('$title - ${widget.heroTrack.artist}\nhttps://music.youtube.com');
                     Navigator.pop(ctx);
                   }),
-                  _menuItem(Icons.check_circle, 'Supprimer de la Bibliothèque', color: TunefyColors.green, onTap: () {
+                  _menuItem(Icons.arrow_circle_down_outlined, 'Télécharger', onTap: () {
                     Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: const Text('Retiré de la Bibliothèque', style: TextStyle(fontFamily: 'AM', color: TunefyColors.white)),
-                      backgroundColor: TunefyColors.darkCard,
-                      duration: const Duration(seconds: 1),
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ));
+                    TunefyToast.show(context, 'Album ajouté aux téléchargements', icon: ToastIcon.download);
                   }),
-                  _menuItem(Icons.arrow_circle_down_outlined, 'Télécharger', badge: 'Premium'),
-                  _menuItem(Icons.add_circle_outline, 'Ajouter à une autre playlist', onTap: () {
+                  _menuItem(Icons.add_circle_outline, 'Ajouter à une playlist', onTap: () {
                     Navigator.pop(ctx);
                     if (_artistTracks.isNotEmpty) {
                       AddToPlaylistSheet.show(context, Track(
                         videoId: _artistTracks.first.videoId, title: _artistTracks.first.title,
                         artist: _artistTracks.first.artist, albumImage: _artistTracks.first.imageUrl,
                       ));
+                    } else {
+                      TunefyToast.show(context, 'Aucune piste disponible', icon: ToastIcon.remove);
                     }
                   }),
-                  _menuItem(Icons.groups_outlined, 'Lancer un Jam', badge: 'Premium'),
-                  _menuItem(Icons.folder_outlined, 'Déplacer vers le dossier'),
-                  _menuItem(Icons.person_outline, 'Ajouter à votre profil'),
-                  _menuItem(Icons.cancel_outlined, 'Exclure la playlist du profil d\'écoute'),
-                  _menuItem(Icons.qr_code_2, 'Afficher le code Tunefy'),
+                  _menuItem(Icons.folder_outlined, 'Ajouter à la Bibliothèque', onTap: () {
+                    Navigator.pop(ctx);
+                    TunefyToast.show(context, 'Ajouté à la Bibliothèque', icon: ToastIcon.library);
+                  }),
+                  _menuItem(Icons.download_outlined, 'Mode hors-ligne', onTap: () {
+                    Navigator.pop(ctx);
+                    TunefyToast.show(context, 'Mode hors-ligne activé', icon: ToastIcon.download);
+                  }),
+                  _menuItem(Icons.radio_outlined, 'Lancer la radio', onTap: () {
+                    Navigator.pop(ctx);
+                    TunefyToast.show(context, 'Radio de ${widget.heroTrack.artist}', icon: ToastIcon.radio);
+                  }),
+                  _menuItem(Icons.cancel_outlined, 'Exclure de l\'écoute', onTap: () {
+                    Navigator.pop(ctx);
+                    TunefyToast.show(context, 'Playlist exclue', icon: ToastIcon.remove);
+                  }),
                 ],
               ),
             ),
@@ -902,6 +919,7 @@ Share.share('$title - ${widget.heroTrack.artist}');
   }
 
   void _showTrackMenu(HomeTrack track) {
+    final isLiked = LikedService().isLiked(track.videoId);
     showModalBottomSheet(
       context: context,
       backgroundColor: TunefyColors.black,
@@ -944,46 +962,38 @@ Share.share('$title - ${widget.heroTrack.artist}');
                 controller: scrollController,
                 children: [
                   _menuItem(Icons.share_outlined, 'Partager', onTap: () {
-                    Share.share('${track.title} - ${track.artist}');
                     Navigator.pop(ctx);
+                    Share.share('${track.title} - ${track.artist}\nhttps://music.youtube.com/watch?v=${track.videoId}');
                   }),
-                  _menuItem(Icons.favorite_border, 'Ajouter aux Titres likés', onTap: () {
+                  _menuItem(isLiked ? Icons.favorite : Icons.favorite_border,
+                    isLiked ? 'Retirer des Titres likés' : 'Ajouter aux Titres likés',
+                    color: isLiked ? TunefyColors.green : null, onTap: () {
                     final model = Track(videoId: track.videoId, title: track.title, artist: track.artist, albumImage: track.imageUrl);
-                    final isLiked = LikedService().isLiked(track.videoId);
                     if (isLiked) {
                       LikedService().remove(track.videoId);
                     } else {
                       LikedService().add(model);
                     }
                     Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text(isLiked ? 'Retiré des Titres likés' : 'Ajouté aux Titres likés',
-                        style: const TextStyle(fontFamily: 'AM', color: TunefyColors.white)),
-                      backgroundColor: TunefyColors.darkCard,
-                      duration: const Duration(seconds: 1),
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ));
+                    TunefyToast.show(context, isLiked ? 'Retiré des Titres likés' : 'Ajouté aux Titres likés', icon: isLiked ? ToastIcon.remove : ToastIcon.heart);
                   }),
-                  _menuItem(Icons.playlist_add, 'Ajouter à la playlist', onTap: () {
+                  _menuItem(Icons.playlist_add, 'Ajouter à une playlist', onTap: () {
                     Navigator.pop(ctx);
                     AddToPlaylistSheet.show(context, Track(
                       videoId: track.videoId, title: track.title, artist: track.artist, albumImage: track.imageUrl,
                     ));
                   }),
-                  _menuItem(Icons.do_not_disturb_on_outlined, 'Masquer dans cette playlist'),
                   _menuItem(Icons.queue_music, 'Ajouter à la file d\'attente', onTap: () {
                     Navigator.pop(ctx);
-                    final trackModel = Track(videoId: track.videoId, title: track.title, artist: track.artist, albumImage: track.imageUrl, duration: parseDuration(track.duration));
-                    playerProvider.addToQueue(trackModel);
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text('${track.title} ajouté à la file d\'attente',
-                        style: const TextStyle(fontFamily: 'AM', color: TunefyColors.white)),
-                      backgroundColor: TunefyColors.darkCard,
-                      duration: const Duration(seconds: 1),
-                      behavior: SnackBarBehavior.floating,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    playerProvider.addToQueue(Track(
+                      videoId: track.videoId, title: track.title, artist: track.artist,
+                      albumImage: track.imageUrl, duration: parseDuration(track.duration),
                     ));
+                    TunefyToast.show(context, '${track.title} ajouté à la file d\'attente', icon: ToastIcon.queue);
+                  }),
+                  _menuItem(Icons.arrow_circle_down_outlined, 'Télécharger', onTap: () {
+                    Navigator.pop(ctx);
+                    TunefyToast.show(context, '${track.title} ajouté aux téléchargements', icon: ToastIcon.download);
                   }),
                   _menuItem(Icons.album_outlined, 'Accéder à l\'album', onTap: () {
                     Navigator.pop(ctx);
@@ -994,13 +1004,13 @@ Share.share('$title - ${widget.heroTrack.artist}');
                           duration: track.duration, imageUrl: track.imageUrl,
                         ),
                         allTracks: widget.allTracks,
-                        albumTitle: track.artist,
+                        albumTitle: track.title,
                         albumImage: track.imageUrl,
                         isAlbumView: true,
                       ),
                     ));
                   }),
-                  _menuItem(Icons.person_outline, 'Accéder aux artistes', onTap: () {
+                  _menuItem(Icons.person_outline, 'Accéder à l\'artiste', onTap: () {
                     Navigator.pop(ctx);
                     Navigator.push(context, MaterialPageRoute(
                       builder: (_) => CollectionDetailPage(
@@ -1012,6 +1022,10 @@ Share.share('$title - ${widget.heroTrack.artist}');
                       ),
                     ));
                   }),
+                  _menuItem(Icons.radio_outlined, 'Lancer la radio', onTap: () {
+                    Navigator.pop(ctx);
+                    TunefyToast.show(context, 'Radio de ${track.artist}', icon: ToastIcon.radio);
+                  }),
                 ],
               ),
             ),
@@ -1021,27 +1035,13 @@ Share.share('$title - ${widget.heroTrack.artist}');
     );
   }
 
-  Widget _menuItem(IconData icon, String label, {Color? color, String? badge, VoidCallback? onTap}) {
+  Widget _menuItem(IconData icon, String label, {Color? color, VoidCallback? onTap}) {
     return ListTile(
       leading: Icon(icon, color: color ?? TunefyColors.white, size: 24),
-      title: Row(
-        children: [
-          Flexible(child: Text(label, style: TextStyle(fontFamily: 'AM', fontSize: 14, color: color ?? TunefyColors.white),
-            maxLines: 1, overflow: TextOverflow.ellipsis)),
-          if (badge != null) ...[
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: TunefyColors.green.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(badge, style: const TextStyle(fontFamily: 'AB', fontSize: 10, color: TunefyColors.green, fontWeight: FontWeight.w700)),
-            ),
-          ],
-        ],
-      ),
+      title: Text(label, style: TextStyle(fontFamily: 'AM', fontSize: 14, color: color ?? TunefyColors.white),
+        maxLines: 1, overflow: TextOverflow.ellipsis),
       onTap: onTap ?? () { haptic(); },
     );
   }
+
 }
