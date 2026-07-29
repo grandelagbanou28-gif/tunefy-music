@@ -69,141 +69,34 @@ class MuzoService {
     }
   }
 
-  static final _albumBrowseIdCache = <String, String?>{};
-
-  static Future<Map<String, dynamic>?> searchAlbum(String title, String artist) async {
-    final cacheKey = '$title|||$artist';
-    if (_albumBrowseIdCache.containsKey(cacheKey)) {
-      final cachedId = _albumBrowseIdCache[cacheKey];
-      if (cachedId != null) return getAlbumDetails(cachedId);
-      return null;
-    }
+  /// Searches Muzo for the album browseId, returns it.
+  /// The album details endpoint is broken (403), so we only return
+  /// the browseId for reference — actual tracks must come from iTunes.
+  static Future<String?> searchAlbumId(String title, String artist) async {
     try {
       final query = '$title $artist';
       final r = await _dio.get('$_base/api/search', queryParameters: {
-        'q': query, 'filter': 'albums', 'limit': '8',
+        'q': query, 'filter': 'albums', 'limit': '5',
       });
       final raw = r.data;
       final data = raw is String ? jsonDecode(raw) : raw;
-      if (data is! Map) return _cacheBrowseId(cacheKey, null);
+      if (data is! Map) return null;
       final results = data['results'] as List?;
-      if (results == null || results.isEmpty) {
-        return await _searchAlbumRetry(title, artist, cacheKey);
-      }
+      if (results == null || results.isEmpty) return null;
 
       final tLow = title.toLowerCase();
       final aLow = artist.toLowerCase();
-      Map? bestMatch;
-      double bestScore = 0;
-
       for (final alb in results) {
         if (alb is! Map) continue;
         final albTitle = (alb['title'] as String? ?? '').toLowerCase();
         final albArtist = (_extractArtist(alb) ?? '').toLowerCase();
-        final browseId = alb['browseId'] as String?;
-        if (browseId == null || browseId.isEmpty) continue;
-
-        double score = 0;
-        if (albTitle == tLow && albArtist == aLow) score = 3;
-        else if (albTitle == tLow) score = 2;
-        else if ((albTitle.contains(tLow) || tLow.contains(albTitle)) &&
-                 (albArtist.contains(aLow) || aLow.contains(albArtist))) score = 1.5;
-        else if (albTitle.contains(tLow) || tLow.contains(albTitle)) score = 1;
-
-        if (score > bestScore) {
-          bestScore = score;
-          bestMatch = alb;
-        }
-        if (score >= 3) break;
-      }
-
-      if (bestMatch != null) {
-        final browseId = bestMatch['browseId'] as String;
-        final details = await getAlbumDetails(browseId);
-        if (details != null) {
-          _albumBrowseIdCache[cacheKey] = browseId;
-          return details;
+        if (albTitle == tLow && (albArtist.contains(aLow) || aLow.contains(albArtist))) {
+          return alb['browseId'] as String?;
         }
       }
-
-      final first = results.first as Map?;
-      if (first != null) {
-        final browseId = first['browseId'] as String?;
-        if (browseId != null && browseId.isNotEmpty) {
-          final details = await getAlbumDetails(browseId);
-          if (details != null) {
-            _albumBrowseIdCache[cacheKey] = browseId;
-            return details;
-          }
-        }
-      }
-
-      return await _searchAlbumRetry(title, artist, cacheKey);
+      return results.firstWhere((a) => a is Map, orElse: () => null)?['browseId'] as String?;
     } catch (e) {
-      debugPrint('MuzoService: searchAlbum error: $e');
-      _albumBrowseIdCache[cacheKey] = null;
-      return null;
-    }
-  }
-
-  static Future<Map<String, dynamic>?> _searchAlbumRetry(String title, String artist, String cacheKey) async {
-    try {
-      final r = await _dio.get('$_base/api/search', queryParameters: {
-        'q': title, 'filter': 'albums', 'limit': '8',
-      });
-      final raw = r.data;
-      final data = raw is String ? jsonDecode(raw) : raw;
-      if (data is! Map) return _cacheBrowseId(cacheKey, null);
-      final results = data['results'] as List?;
-      if (results == null || results.isEmpty) return _cacheBrowseId(cacheKey, null);
-
-      final tLow = title.toLowerCase();
-      for (final alb in results) {
-        if (alb is! Map) continue;
-        final albTitle = (alb['title'] as String? ?? '').toLowerCase();
-        if (albTitle.contains(tLow) || tLow.contains(albTitle)) {
-          final browseId = alb['browseId'] as String?;
-          if (browseId != null && browseId.isNotEmpty) {
-            final details = await getAlbumDetails(browseId);
-            if (details != null) {
-              _albumBrowseIdCache[cacheKey] = browseId;
-              return details;
-            }
-          }
-        }
-      }
-
-      final first = results.first as Map?;
-      if (first != null) {
-        final browseId = first['browseId'] as String?;
-        if (browseId != null && browseId.isNotEmpty) {
-          final details = await getAlbumDetails(browseId);
-          if (details != null) {
-            _albumBrowseIdCache[cacheKey] = browseId;
-            return details;
-          }
-        }
-      }
-      return _cacheBrowseId(cacheKey, null);
-    } catch (_) {
-      return _cacheBrowseId(cacheKey, null);
-    }
-  }
-
-  static Map<String, dynamic>? _cacheBrowseId(String key, String? browseId) {
-    _albumBrowseIdCache[key] = browseId;
-    return null;
-  }
-
-  static Future<Map<String, dynamic>?> getAlbumDetails(String albumId) async {
-    try {
-      final r = await _dio.get('$_base/api/album/$albumId');
-      final raw = r.data;
-      final data = raw is String ? jsonDecode(raw) : raw;
-      if (data is Map) return Map<String, dynamic>.from(data);
-      return null;
-    } catch (e) {
-      debugPrint('MuzoService: getAlbumDetails error: $e');
+      debugPrint('MuzoService: searchAlbumId error: $e');
       return null;
     }
   }
@@ -241,25 +134,4 @@ class MuzoService {
     }
   }
 
-  static List<HomeTrack> parseTracks(Map<String, dynamic>? albumData, {String? fallbackArtist, String? fallbackImage}) {
-    if (albumData == null) return [];
-    final album = albumData['album'] as Map? ?? albumData;
-    final albumArtist = album['artist'] as String? ?? fallbackArtist ?? '';
-    final albumThumb = album['thumbnail'] as String? ?? fallbackImage ?? '';
-    final tracks = album['tracks'] as List?;
-    if (tracks == null || tracks.isEmpty) return [];
-    return tracks.whereType<Map>().map((t) {
-      final videoId = t['videoId'] as String? ?? t['id'] as String? ?? '';
-      final trackArtist = t['artist'] as String? ?? '';
-      return HomeTrack(
-        videoId: videoId,
-        title: t['title'] as String? ?? '',
-        artist: trackArtist.isNotEmpty ? trackArtist : albumArtist,
-        duration: t['duration'] as String? ?? '',
-        imageUrl: (t['thumbnail'] as String? ?? '').isNotEmpty
-            ? t['thumbnail'] as String
-            : albumThumb,
-      );
-    }).toList();
-  }
 }

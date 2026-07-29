@@ -184,18 +184,8 @@ class _CollectionDetailPageState extends State<CollectionDetailPage> {
     setState(() {});
     List<HomeTrack> tracks = [];
 
-    // 1) If we already have a Muzo browseId, try it first (fast path)
-    if (browseId != null) {
-      try {
-        final muzoData = await MuzoService.getAlbumDetails(browseId);
-        tracks = MuzoService.parseTracks(muzoData, fallbackArtist: artistName, fallbackImage: widget.albumImage ?? _heroImageUrl);
-        debugPrint('  Muzo details(browseId): ${tracks.length} tracks');
-      } catch (_) { debugPrint('  Muzo details FAILED'); }
-      if (tracks.isNotEmpty) return _finishLoading(tracks);
-    }
-
-    // 2) iTunes Lookup by collectionId (fastest & most reliable for iTunes albums)
-    if (tracks.isEmpty && collectionId != null) {
+    // 1) iTunes Lookup by collectionId (fastest & most reliable)
+    if (collectionId != null) {
       try {
         tracks = await ItunesService.fetchAlbumTracks(collectionId);
         debugPrint('  iTunes Lookup(collectionId=$collectionId): ${tracks.length} tracks');
@@ -203,17 +193,7 @@ class _CollectionDetailPageState extends State<CollectionDetailPage> {
       if (tracks.isNotEmpty) return _finishLoading(tracks);
     }
 
-    // 3) Muzo search by title+artist (gives YouTube videoIds)
-    if (tracks.isEmpty) {
-      try {
-        final muzoData = await MuzoService.searchAlbum(albumTitle, artistName);
-        if (muzoData != null) tracks = MuzoService.parseTracks(muzoData, fallbackArtist: artistName, fallbackImage: widget.albumImage ?? _heroImageUrl);
-        debugPrint('  Muzo search: ${tracks.length} tracks');
-      } catch (_) { debugPrint('  Muzo search FAILED'); }
-      if (tracks.isNotEmpty) return _finishLoading(tracks);
-    }
-
-    // 4) iTunes search by title (lenient match)
+    // 2) iTunes search by title (lenient match)
     if (tracks.isEmpty) {
       try {
         tracks = await ItunesService.fetchAlbumTracksByTitle(albumTitle, artistName);
@@ -222,7 +202,7 @@ class _CollectionDetailPageState extends State<CollectionDetailPage> {
       if (tracks.isNotEmpty) return _finishLoading(tracks);
     }
 
-    // 5) Last resort: artist top tracks
+    // 3) Last resort: artist top tracks
     if (tracks.isEmpty) {
       try {
         tracks = await ItunesService.fetchArtistTopTracks(artistName);
@@ -731,18 +711,19 @@ Share.share('$title - ${widget.heroTrack.artist}');
           return GestureDetector(
             onTap: () async {
               haptic();
+              final plId = pl['id'] ?? '';
               List<HomeTrack> tracks = [];
-              try {
-                final muzoData = await MuzoService.searchAlbum(plTitle, widget.heroTrack.artist);
-                tracks = MuzoService.parseTracks(muzoData, fallbackArtist: widget.heroTrack.artist, fallbackImage: plImage);
-                debugPrint('_buildPlaylistsRow: Muzo returned ${tracks.length} tracks for "$plTitle"');
-              } catch (_) {}
-              if (tracks.isEmpty) {
-                final plId = pl['id'] ?? '';
-                if (plId.isEmpty) return;
+              if (plId.isNotEmpty) {
                 try {
                   tracks = await ItunesService.fetchPlaylistTracks(plId);
                   debugPrint('_buildPlaylistsRow: iTunes returned ${tracks.length} tracks');
+                } catch (_) {}
+              }
+              if (tracks.isEmpty) {
+                try {
+                  final searchResult = await ItunesService.searchTracksByQuery('$plTitle ${widget.heroTrack.artist}', limit: 20);
+                  if (searchResult.isNotEmpty) tracks = searchResult;
+                  debugPrint('_buildPlaylistsRow: iTunes search returned ${tracks.length} tracks');
                 } catch (_) {}
               }
               if (tracks.isEmpty || !mounted) return;
