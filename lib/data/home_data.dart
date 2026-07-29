@@ -271,8 +271,20 @@ class HomeData {
       _as('Artistes populaires', artists.take(10).toList()),
       _ts('Chansons tendance', _slice(global, 40, 10)),
       _ts('Top 50 Rap Monde', _slice(rapWorld, 20, 12)),
-      _ts('Parce que vous avez écouté', parceQueVous.take(10).toList()),
-      _as('Vos artistes préférés', vosArtistes.take(10).toList()),
+       _ts('Parce que vous avez écouté', parceQueVous.take(10).toList()),
+       _ts('Recommandés pour vous', SyncEngine.getRecommendations('rap').take(10).map(_syncToHomeTrack).toList()),
+       _ts('Nouveautés aujourd\'hui', SyncEngine.getNewReleasesToday().take(10).map((sc) => _syncToHomeTrack(sc)).toList()),
+       _ts('Nouveautés cette semaine', SyncEngine.getNewReleasesThisWeek().take(10).map(_syncToHomeTrack).toList()),
+       _als('Nouveautés ce mois-ci', SyncEngine.getNewReleasesThisMonth().take(10).map(_syncToHomeAlbum).toList()),
+       _ts('Les plus écoutés', SyncEngine.getTrending(limit: 10).map(_syncToHomeTrack).toList()),
+       _als('Nouvelles playlists', SyncEngine.getPlaylists().take(10).map((sc) => _catalogToHomeAlbum(CatalogAlbum(
+         id: sc.id,
+         title: sc.title,
+         artist: sc.artist,
+         imageUrl: sc.imageUrl,
+         trackCount: sc.trackCount ?? 0,
+       ))).toList()),
+       _as('Vos artistes préférés', vosArtistes.take(10).toList()),
       _ts('Vos chansons préférées', vosChansons.take(10).toList()),
       _ts('Afro Drill', _slice(afroDrillWorld, 0, 10)),
       _ts('Plus à découvrir', plusADecouvrir.take(10).toList()),
@@ -312,6 +324,14 @@ class HomeData {
       HomeSection(title: title, type: HomeSectionType.artists, artists: artists);
   static HomeSection _als(String title, List<HomeAlbum> albums) =>
       HomeSection(title: title, type: HomeSectionType.albums, albums: albums);
+
+  static HomeTrack _syncToHomeTrack(SyncContent sc) => HomeTrack(
+    videoId: sc.id,
+    title: sc.title,
+    artist: sc.artist,
+    duration: sc.duration ?? '',
+    imageUrl: sc.imageUrl ?? '',
+  );
 
   static HomeAlbum _catalogToHomeAlbum(CatalogAlbum ca) => HomeAlbum(
     title: ca.title,
