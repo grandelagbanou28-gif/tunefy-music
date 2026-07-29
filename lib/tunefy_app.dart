@@ -832,6 +832,8 @@ class _TunefyHomeState extends State<TunefyHome> {
         haptic();
         debugPrint('ALBUM CARD TAPPED: "${album.title}" by ${album.artist}, collectionId=${album.collectionId}, browseId=${album.browseId}');
         List<HomeTrack> albumTracks = [];
+
+        // 1) Muzo by browseId (fast path)
         if (album.browseId != null) {
           try {
             final muzoData = await MuzoService.getAlbumDetails(album.browseId!);
@@ -839,6 +841,16 @@ class _TunefyHomeState extends State<TunefyHome> {
             debugPrint('  Muzo details(browseId): ${albumTracks.length} tracks');
           } catch (_) { debugPrint('  Muzo details FAILED'); }
         }
+
+        // 2) iTunes Lookup by collectionId (fastest for iTunes albums)
+        if (albumTracks.isEmpty && album.collectionId != null) {
+          try {
+            albumTracks = await ItunesService.fetchAlbumTracks(album.collectionId!);
+            debugPrint('  iTunes Lookup returned ${albumTracks.length} tracks');
+          } catch (_) { debugPrint('  iTunes Lookup FAILED'); }
+        }
+
+        // 3) Muzo search by title+artist (YouTube videoIds)
         if (albumTracks.isEmpty) {
           try {
             final muzoData = await MuzoService.searchAlbum(album.title, album.artist);
@@ -846,18 +858,23 @@ class _TunefyHomeState extends State<TunefyHome> {
             debugPrint('  Muzo search: ${albumTracks.length} tracks');
           } catch (_) { debugPrint('  Muzo search FAILED'); }
         }
-        if (albumTracks.isEmpty && album.collectionId != null) {
-          try {
-            albumTracks = await ItunesService.fetchAlbumTracks(album.collectionId!);
-            debugPrint('  iTunes Lookup returned ${albumTracks.length} tracks');
-          } catch (_) { debugPrint('  iTunes Lookup FAILED'); }
-        }
+
+        // 4) iTunes search by title (lenient)
         if (albumTracks.isEmpty) {
           try {
             albumTracks = await ItunesService.fetchAlbumTracksByTitle(album.title, album.artist);
             debugPrint('  iTunes search by title returned ${albumTracks.length} tracks');
           } catch (_) { debugPrint('  iTunes search by title FAILED'); }
         }
+
+        // 5) Last resort: artist top tracks
+        if (albumTracks.isEmpty) {
+          try {
+            albumTracks = await ItunesService.fetchArtistTopTracks(album.artist);
+            debugPrint('  iTunes artist top tracks: ${albumTracks.length} tracks');
+          } catch (_) { debugPrint('  iTunes artist top tracks FAILED'); }
+        }
+
         debugPrint('  FINAL albumTracks count = ${albumTracks.length}');
         if (!context.mounted) return;
         Navigator.push(context, MaterialPageRoute(
