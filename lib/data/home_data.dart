@@ -157,28 +157,26 @@ class HomeData {
       } catch (_) {}
       podcasts.shuffle(Random());
 
-      // Batch 6: nouveaux albums = rap FR + US, sortis dans les 7 derniers jours
-      final sevenDaysAgo = DateTime(2026, 7, 22);
-      final today = DateTime(2026, 7, 29, 23, 59, 59);
+      // Batch 6: nouveaux albums = rap FR + US uniquement
       List<HomeAlbum> rapFRalbums = [], rapUSalbums = [], catNew = [];
       try {
         final r6 = await Future.wait([
-          ItunesService.fetchAlbumsByGenre('rap français', limit: 15, minDate: sevenDaysAgo, maxDate: today),
-          ItunesService.fetchAlbumsByGenre('rap us', limit: 15, minDate: sevenDaysAgo, maxDate: today),
-          MusicCatalogService.searchAlbums('rap 2026', limit: 20),
+          ItunesService.fetchAlbumsByGenre('rap français', limit: 10),
+          ItunesService.fetchAlbumsByGenre('rap us', limit: 10),
+          MusicCatalogService.searchAlbums('rap francais nouveau', limit: 10),
+          MusicCatalogService.searchAlbums('rap us new', limit: 10),
         ]).timeout(const Duration(seconds: 30));
         rapFRalbums = r6[0] as List<HomeAlbum>;
         rapUSalbums = r6[1] as List<HomeAlbum>;
-        catNew = (r6[2] as List<CatalogAlbum>)
-            .where((a) => a.title.toLowerCase().contains('rap') ||
-                ['french', 'français', 'us', 'america'].any((kw) => a.artist.toLowerCase().contains(kw)))
+        catNew = ((r6[2] as List<CatalogAlbum>)
+                ..addAll(r6[3] as List<CatalogAlbum>))
+            .where((a) => a.artist.toLowerCase().contains('rap'))
             .map(_catToHomeAlbum).toList();
       } catch (_) {}
       final newAlbums = <HomeAlbum>[...rapFRalbums, ...rapUSalbums, ...catNew]
         ..shuffle(Random());
-      newAlbums.removeWhere((a) => a.artist.toLowerCase().contains('various'));
       final seen2 = <String>{};
-      newAlbums.retainWhere((a) => seen2.add(a.title.toLowerCase()));
+      final newAlbumsFiltered = newAlbums.where((a) => seen2.add(a.title.toLowerCase())).toList();
 
       final rapWorld = [...rap, ...rapFR.take(30), ...afro.take(15)]..shuffle(Random());
       final drillWorld = [...drill, ...rapFR.take(10), ...afro.take(10)]..shuffle(Random());
@@ -266,7 +264,7 @@ class HomeData {
       _ts('Mix Quotidien', _slice(global, 30, 10)),
       _ts('Nouvelles sorties', _slice(nuevas, 0, 10)),
       _ts('Découvertes de la semaine', _slice(decouvertes, 0, 10)),
-      _als('Nouveaux albums', newAlbums.take(10).toList()),
+       _als('Nouveaux albums', newAlbumsFiltered.take(10).toList()),
       _als('Albums populaires', albums.take(25).toList()),
       _ts('Mix Drill', _slice(drillWorld, 0, 10)),
       _ts('Mix Trap', _slice(rapWorld, 0, 10)),
