@@ -157,26 +157,26 @@ class HomeData {
       } catch (_) {}
       podcasts.shuffle(Random());
 
-      // Batch 6: nouveaux albums par genre (iTunes + Catalog)
-      List<HomeAlbum> rapFRalbums = [], afroAlbums = [], popAlbums = [], catNew = [];
+      // Batch 6: nouveaux albums = rap FR + US, sortis dans les 7 derniers jours
+      final sevenDaysAgo = DateTime(2026, 7, 22);
+      final today = DateTime(2026, 7, 29, 23, 59, 59);
+      List<HomeAlbum> rapFRalbums = [], rapUSalbums = [], catNew = [];
       try {
         final r6 = await Future.wait([
-          ItunesService.fetchAlbumsByGenre('rap français', limit: 10),
-          ItunesService.fetchAlbumsByGenre('afrobeat', limit: 10),
-          ItunesService.fetchAlbumsByGenre('pop', limit: 10),
-          MusicCatalogService.searchAlbums('new release', limit: 15),
-          MusicCatalogService.searchAlbums('2026', limit: 15),
+          ItunesService.fetchAlbumsByGenre('rap français', limit: 15, minDate: sevenDaysAgo, maxDate: today),
+          ItunesService.fetchAlbumsByGenre('rap us', limit: 15, minDate: sevenDaysAgo, maxDate: today),
+          MusicCatalogService.searchAlbums('rap 2026', limit: 20),
         ]).timeout(const Duration(seconds: 30));
         rapFRalbums = r6[0] as List<HomeAlbum>;
-        afroAlbums = r6[1] as List<HomeAlbum>;
-        popAlbums = r6[2] as List<HomeAlbum>;
-        catNew = (r6[3] as List<CatalogAlbum>).map(_catToHomeAlbum).toList()
-          ..addAll((r6[4] as List<CatalogAlbum>).map(_catToHomeAlbum));
+        rapUSalbums = r6[1] as List<HomeAlbum>;
+        catNew = (r6[2] as List<CatalogAlbum>)
+            .where((a) => a.title.toLowerCase().contains('rap') ||
+                ['french', 'français', 'us', 'america'].any((kw) => a.artist.toLowerCase().contains(kw)))
+            .map(_catToHomeAlbum).toList();
       } catch (_) {}
-      final newAlbums = <HomeAlbum>[
-        ...rapFRalbums, ...afroAlbums, ...popAlbums, ...catNew,
-      ]
+      final newAlbums = <HomeAlbum>[...rapFRalbums, ...rapUSalbums, ...catNew]
         ..shuffle(Random());
+      newAlbums.removeWhere((a) => a.artist.toLowerCase().contains('various'));
       final seen2 = <String>{};
       newAlbums.retainWhere((a) => seen2.add(a.title.toLowerCase()));
 

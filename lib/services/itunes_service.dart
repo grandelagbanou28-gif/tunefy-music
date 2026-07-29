@@ -194,12 +194,24 @@ class ItunesService {
     }
   }
 
-  static Future<List<HomeAlbum>> fetchAlbumsByGenre(String genre, {int limit = 20}) async {
+  static Future<List<HomeAlbum>> fetchAlbumsByGenre(String genre, {int limit = 20, DateTime? minDate, DateTime? maxDate}) async {
     try {
       final r = await _dio.get('$_base/search', queryParameters: {
-        'term': '$genre new album 2026', 'media': 'music', 'entity': 'album', 'limit': limit, 'country': 'us',
+        'term': '$genre new album 2026', 'media': 'music', 'entity': 'album', 'limit': limit * 3, 'country': 'us',
       });
-      final albums = _extractResults(r.data).map((a) {
+      var raw = _extractResults(r.data);
+      if (minDate != null || maxDate != null) {
+        raw = raw.where((a) {
+          final releaseStr = a['releaseDate'] as String?;
+          if (releaseStr == null || releaseStr.isEmpty) return false;
+          final release = DateTime.tryParse(releaseStr);
+          if (release == null) return false;
+          if (minDate != null && release.isBefore(minDate)) return false;
+          if (maxDate != null && release.isAfter(maxDate)) return false;
+          return true;
+        }).toList();
+      }
+      final albums = raw.map((a) {
         final img = _artwork(a['artworkUrl100'] as String? ?? '');
         final release = a['releaseDate'] as String? ?? '';
         return HomeAlbum(
