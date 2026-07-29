@@ -87,7 +87,7 @@ class HomeData {
     try {
       final y = DateTime.now().year;
 
-      // Batch 1: artists & albums (iTunes + Catalog service)
+      // Batch 1: artists & albums (iTunes + Catalog) — 2026 uniquement
       final r1 = await Future.wait([
         ItunesService.fetchChartArtists(limit: 25),
         ItunesService.fetchChartAlbums(limit: 25),
@@ -96,18 +96,14 @@ class HomeData {
         MuzoService.searchAlbumsByGenre('popular', limit: 10),
       ]).timeout(const Duration(seconds: 30));
       final artists = r1[0] as List<HomeArtist>;
-      final albums = r1[1] as List<HomeAlbum>;
-      final catAlbums1 = (r1[2] as List<CatalogAlbum>).map(_catToHomeAlbum);
-      final catAlbums2 = (r1[3] as List<CatalogAlbum>).map(_catToHomeAlbum);
-      final muzoAlbums = r1[4] as List<HomeAlbum>;
-      final allAlbums = <HomeAlbum>[
-        ...albums, ...catAlbums1, ...catAlbums2, ...muzoAlbums,
-      ];
+      final albums = <HomeAlbum>[
+        ...(r1[1] as List<HomeAlbum>),
+        ...(r1[2] as List<CatalogAlbum>).map(_catToHomeAlbum),
+        ...(r1[3] as List<CatalogAlbum>).map(_catToHomeAlbum),
+        ...(r1[4] as List<HomeAlbum>),
+      ]..retainWhere((a) => a.year == '2026');
       final seen = <String>{};
-      allAlbums.retainWhere((a) => seen.add(a.title.toLowerCase()));
-      albums
-        ..clear()
-        ..addAll(allAlbums);
+      albums.retainWhere((a) => seen.add(a.title.toLowerCase()));
 
       // Batch 2: genres (utilisés pour le global + sections spécifiques)
       final r2 = await Future.wait([
@@ -176,7 +172,7 @@ class HomeData {
       final newAlbums = <HomeAlbum>[...rapFRalbums, ...rapUSalbums, ...catNew]
         ..shuffle(Random());
       final seen2 = <String>{};
-      final newAlbumsFiltered = newAlbums.where((a) => seen2.add(a.title.toLowerCase())).toList();
+       final newAlbumsFiltered = newAlbums.where((a) => seen2.add(a.title.toLowerCase()) && a.year == '2026').toList();
 
       final rapWorld = [...rap, ...rapFR.take(30), ...afro.take(15)]..shuffle(Random());
       final drillWorld = [...drill, ...rapFR.take(10), ...afro.take(10)]..shuffle(Random());
