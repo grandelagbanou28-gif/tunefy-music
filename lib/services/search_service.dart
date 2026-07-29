@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:tunefy/models/home_track.dart';
 import 'package:tunefy/services/server_config_service.dart';
+import 'package:tunefy/services/muzo_service.dart';
 
 enum SearchFilter { songs, albums, artists, playlists, all }
 
@@ -92,6 +93,25 @@ class SearchService {
   static Future<List<SearchResult>> search(String query, {SearchFilter filter = SearchFilter.all, int limit = 300}) async {
     if (query.trim().isEmpty) return [];
 
+    // Muzo primary for songs & albums (real YouTube videoIds / browseIds)
+    if (filter == SearchFilter.all || filter == SearchFilter.songs) {
+      try {
+        final muzoSongs = await _searchMuzoSongs(query, limit);
+        if (muzoSongs.isNotEmpty) {
+          if (filter == SearchFilter.songs) return muzoSongs;
+        }
+      } catch (_) {}
+    }
+    if (filter == SearchFilter.all || filter == SearchFilter.albums) {
+      try {
+        final muzoAlbums = await _searchMuzoAlbums(query, limit);
+        if (muzoAlbums.isNotEmpty) {
+          if (filter == SearchFilter.albums) return muzoAlbums;
+        }
+      } catch (_) {}
+    }
+
+    // Fallback to Saavn + YouTube
     try {
       if (filter == SearchFilter.all) {
         return await _searchSaavnAll(query, limit);
@@ -102,6 +122,31 @@ class SearchService {
     }
 
     return _searchYouTubeFallback(query, filter, limit);
+  }
+
+  static Future<List<SearchResult>> _searchMuzoSongs(String query, int limit) async {
+    final tracks = await MuzoService.searchSongs(query, limit: limit);
+    return tracks.map((t) => SearchResult(
+      id: t.videoId,
+      title: t.title,
+      subtitle: t.artist,
+      type: 'song',
+      imageUrl: t.imageUrl,
+      videoId: t.videoId,
+      duration: t.duration,
+    )).toList();
+  }
+
+  static Future<List<SearchResult>> _searchMuzoAlbums(String query, int limit) async {
+    final albums = await MuzoService.searchAlbumsByGenre(query, limit: limit);
+    return albums.map((a) => SearchResult(
+      id: a.browseId ?? a.title.hashCode.toString(),
+      title: a.title,
+      subtitle: a.artist,
+      type: 'album',
+      imageUrl: a.imageUrl ?? a.image,
+      browseId: a.browseId,
+    )).toList();
   }
 
   static Future<List<SearchResult>> _searchSaavnAll(String query, int limit) async {
