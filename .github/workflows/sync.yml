@@ -12,14 +12,19 @@ jobs:
     steps:
       - name: Trigger sync-orchestrator
         run: |
-          curl -X POST ${{ secrets.SUPABASE_FUNCTION_URL }}/functions/v1/sync-orchestrator \
+          curl -X POST https://uwjpkenrldtexlciaqdz.supabase.co/functions/v1/sync-orchestrator \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Content-Type: application/json"
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --max-time 300
 
   cleanup:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger dedup-cleanup
         run: |
-          curl -X POST ${{ secrets.SUPABASE_FUNCTION_URL }}/functions/v1/dedup-cleanup \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}"
+          curl -X POST https://uwjpkenrldtexlciaqdz.supabase.co/functions/v1/dedup-cleanup \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            --max-time 300

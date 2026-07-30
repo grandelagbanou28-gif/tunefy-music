@@ -1,13 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const FUNCTIONS_BASE = "https://your-project.supabase.co/functions/v1";
-
 serve(async (req) => {
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "POST only" }), { status: 405 });
   }
 
   const start = Date.now();
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
   const orchestratorLog: Record<string, any> = {
     source: "orchestrator",
     started_at: new Date().toISOString(),
@@ -16,21 +17,29 @@ serve(async (req) => {
   };
 
   const syncs = [
-    { name: "jamendo", url: `${FUNCTIONS_BASE}/sync-jamendo` },
-    { name: "audius", url: `${FUNCTIONS_BASE}/sync-audius` },
-    { name: "youtube", url: `${FUNCTIONS_BASE}/sync-youtube` },
-    { name: "itunes", url: `${FUNCTIONS_BASE}/sync-itunes` },
+    { name: "jamendo", url: `${supabaseUrl}/functions/v1/sync-jamendo` },
+    { name: "audius", url: `${supabaseUrl}/functions/v1/sync-audius` },
+    { name: "youtube", url: `${supabaseUrl}/functions/v1/sync-youtube` },
+    { name: "itunes", url: `${supabaseUrl}/functions/v1/sync-itunes` },
   ];
 
   const results = await Promise.allSettled(
     syncs.map(async (s) => {
       const syncStart = Date.now();
       try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 300000);
         const res = await fetch(s.url, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            apikey: supabaseKey,
+            Authorization: `Bearer ${supabaseKey}`,
+          },
           body: JSON.stringify({ triggered_by: "orchestrator" }),
-        }).timeout(new Date(Date.now() + 300000));
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
 
         const body = await res.json().catch(() => null);
         return {
@@ -64,9 +73,6 @@ serve(async (req) => {
   orchestratorLog.duration_ms = Date.now() - start;
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_KEY")!;
-
     await fetch(`${supabaseUrl}/rest/v1/sync_logs`, {
       method: "POST",
       headers: {
