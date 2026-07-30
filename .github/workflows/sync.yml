@@ -3,6 +3,7 @@ name: Sync Music Data
 on:
   schedule:
     - cron: '0 */2 * * *'
+    - cron: '0 3 * * *'
   workflow_dispatch:
 
 jobs:
@@ -17,8 +18,6 @@ jobs:
 
   cleanup:
     runs-on: ubuntu-latest
-    schedule:
-      - cron: '0 3 * * *'
     steps:
       - name: Trigger dedup-cleanup
         run: |
