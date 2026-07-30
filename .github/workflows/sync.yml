@@ -1,0 +1,26 @@
+name: Sync Music Data
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger sync-orchestrator
+        run: |
+          curl -X POST ${{ secrets.SUPABASE_FUNCTION_URL }}/functions/v1/sync-orchestrator \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json"
+
+  cleanup:
+    runs-on: ubuntu-latest
+    schedule:
+      - cron: '0 3 * * *'
+    steps:
+      - name: Trigger dedup-cleanup
+        run: |
+          curl -X POST ${{ secrets.SUPABASE_FUNCTION_URL }}/functions/v1/dedup-cleanup \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}"
