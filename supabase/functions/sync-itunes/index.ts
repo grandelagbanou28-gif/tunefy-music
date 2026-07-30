@@ -1,0 +1,351 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+const ITUNES_BASE = "https://itunes.apple.com";
+
+serve(async (req) => {
+  const start = Date.now();
+  const log: Record<string, any> = {
+    source: "itunes",
+    started_at: new Date().toISOString(),
+    status: "running",
+    albums_found: 0,
+    albums_added: 0,
+    albums_updated: 0,
+    tracks_found: 0,
+    tracks_added: 0,
+    tracks_updated: 0,
+    playlists_found: 0,
+    playlists_added: 0,
+    playlists_updated: 0,
+    artists_found: 0,
+    artists_added: 0,
+  };
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_KEY")!;
+
+    const { data: config } = await fetch(
+      `${supabaseUrl}/rest/v1/sync_config?source=itunes&limit=1`,
+      {
+        headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+      }
+    ).then((r) => r.json()).catch(() => null);
+
+    if (!config?.enabled) {
+      log.status = "skipped";
+      await finish(supabaseUrl, supabaseKey, log, start);
+      return new Response(JSON.stringify(log), { status: 200 });
+    }
+
+    const limit = config.batch_size || 50;
+
+    await synciTunesAlbums(supabaseUrl, supabaseKey, limit, log);
+    await synciTunesChartTracks(supabaseUrl, supabaseKey, limit, log);
+
+    log.status = "success";
+  } catch (e: any) {
+    log.status = "failed";
+    log.error_message = e.message;
+  }
+
+  log.finished_at = new Date().toISOString();
+  log.duration_ms = Date.now() - start;
+  await finish(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_KEY")!, log, start);
+  return new Response(JSON.stringify(log), { status: 200 });
+});
+
+async function synciTunesAlbums(
+  supabaseUrl: string,
+  supabaseKey: string,
+  limit: number,
+  log: Record<string, any>
+) {
+  const countries = ["fr", "us", "gb"];
+  const genres = [
+    "rap francais", "rap us", "hip hop", "afrobeat", "pop", "rnb",
+    "gospel", "reggae", "dancehall", "ampiano",
+  ];
+
+  for (const country of countries) {
+    for (const genre of genres) {
+      let page = 1;
+      let hasMore = true;
+
+      while (hasMore) {
+        try {
+          const url = `${ITUNES_BASE}/search?term=${encodeURIComponent(genre + " new album 2026")}&media=music&entity=album&Country=${country.toUpperCase()}&limit=50&page=${page}`;
+          const res = await fetch(url).then((r) => r.json()).catch(() => null);
+          const results = res?.results || [];
+
+          if (results.length === 0) {
+            hasMore = false;
+            break;
+          }
+
+          log.albums_found += results.length;
+
+          for (const album of results) {
+            if (album.wrapperType !== "collection") continue;
+
+            const artistName = album.artistName || "";
+            const collectionId = album.collectionId;
+            if (!collectionId) continue;
+
+            let artistId = null;
+            const { data: existingArtist } = await fetch(
+              `${supabaseUrl}/rest/v1/artists?source=itunes&source_id=${encodeURIComponent(String(collectionId))}&limit=1`,
+              {
+                headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+              }
+            ).then((r) => r.json()).catch(() => null);
+
+            if (existingArtist && existingArtist.length > 0) {
+              artistId = existingArtist[0].id;
+            } else {
+              const { data: newArtist } = await fetch(
+                `${supabaseUrl}/rest/v1/artists`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+                  body: JSON.stringify({
+                    source: "itunes",
+                    source_id: String(collectionId),
+                    name: artistName,
+                  }),
+                }
+              ).then((r) => r.json()).catch(() => null);
+
+              if (newArtist) {
+                artistId = newArtist.id;
+                log.artists_added++;
+              }
+              log.artists_found++;
+            }
+
+            const artworkUrl = album.artworkUrl100 || "";
+            const coverUrl = artworkUrl.replace("100x100", "600x600");
+
+            const albumData: any = {
+              source: "itunes",
+              source_id: String(collectionId),
+              title: album.collectionName || "",
+              cover_url: coverUrl || null,
+              release_date: album.releaseDate ? album.releaseDate.split("T")[0] : null,
+              genre: null,
+              track_count: album.trackCount || 0,
+              total_duration: 0,
+              artist_id: artistId,
+              updated_at: new Date().toISOString(),
+            };
+
+            const { data: existing } = await fetch(
+              `${supabaseUrl}/rest/v1/albums?source=itunes&source_id=${encodeURIComponent(String(collectionId))}&limit=1`,
+              {
+                headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+              }
+            ).then((r) => r.json()).catch(() => null);
+
+            if (existing && existing.length > 0) {
+              await fetch(`${supabaseUrl}/rest/v1/albums?id=eq.${existing[0].id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json", apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+                body: JSON.stringify(albumData),
+              }).catch(() => {});
+              log.albums_updated++;
+            } else {
+              albumData.created_at = new Date().toISOString();
+              const { data: newAlbum } = await fetch(
+                `${supabaseUrl}/rest/v1/albums`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+                  body: JSON.stringify(albumData),
+                }
+              ).then((r) => r.json()).catch(() => null);
+
+              if (newAlbum) {
+                log.albums_added++;
+                await fetchiTunesTracks(supabaseUrl, supabaseKey, newAlbum.id, collectionId, log);
+              }
+            }
+          }
+
+          if (results.length < 50) hasMore = false;
+          page++;
+          await sleep(200);
+        } catch (e: any) {
+          log.error_message = `iTunes albums error: ${e.message}`;
+          hasMore = false;
+        }
+      }
+    }
+  }
+}
+
+async function fetchiTunesTracks(
+  supabaseUrl: string,
+  supabaseKey: string,
+  albumId: string,
+  collectionId: number,
+  log: Record<string, any>
+) {
+  const maxRetries = 3;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const url = `${ITUNES_BASE}/lookup?id=${collectionId}&media=music&entity=song&limit=200`;
+      const res = await fetch(url).then((r) => r.json()).catch(() => null);
+      const results = res?.results || [];
+      const tracks = results.filter((t: any) => t.wrapperType === "track");
+
+      if (tracks.length === 0 && attempt < maxRetries) {
+        await sleep(1000 * attempt);
+        continue;
+      }
+
+      log.tracks_found += tracks.length;
+
+      for (const track of tracks) {
+        const trackData: any = {
+          source: "itunes",
+          source_id: String(track.trackId || track.collectionId || 0),
+          title: track.trackName || "",
+          audio_url: track.previewUrl || null,
+          preview_url: track.previewUrl || null,
+          duration: track.trackTimeMillis || 0,
+          track_number: track.trackNumber || null,
+          cover_url: track.artworkUrl100?.replace("100x100", "300x300") || null,
+          release_date: null,
+          genre: null,
+          album_id: albumId,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { data: existing } = await fetch(
+          `${supabaseUrl}/rest/v1/tracks?source=itunes&source_id=${encodeURIComponent(String(trackData.source_id))}&limit=1`,
+          {
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+          }
+        ).then((r) => r.json()).catch(() => null);
+
+        if (existing && existing.length > 0) {
+          await fetch(`${supabaseUrl}/rest/v1/tracks?id=eq.${existing[0].id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+            body: JSON.stringify(trackData),
+          }).catch(() => {});
+          log.tracks_updated++;
+        } else {
+          trackData.created_at = new Date().toISOString();
+          const { data: newTrack } = await fetch(
+            `${supabaseUrl}/rest/v1/tracks`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json", apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+              body: JSON.stringify(trackData),
+            }
+          ).then((r) => r.json()).catch(() => null);
+
+          if (newTrack) log.tracks_added++;
+        }
+      }
+
+      if (tracks.length < 200) break;
+      break;
+    } catch (e: any) {
+      if (attempt === maxRetries) {
+        log.error_message = `iTunes tracks error for album ${collectionId}: ${e.message}`;
+      }
+      await sleep(1000 * attempt);
+    }
+  }
+}
+
+async function synciTunesChartTracks(
+  supabaseUrl: string,
+  supabaseKey: string,
+  limit: number,
+  log: Record<string, any>
+) {
+  const countries = ["fr", "us", "gb"];
+  const media = "music";
+  const entity = "song";
+
+  for (const country of countries) {
+    try {
+      const url = `${ITUNES_BASE}/search?term=top+hits+2026&media=${media}&entity=${entity}&Country=${country.toUpperCase()}&limit=${limit}`;
+      const res = await fetch(url).then((r) => r.json()).catch(() => null);
+      const results = res?.results || [];
+
+      log.tracks_found += results.length;
+
+      for (const track of results) {
+        const trackData: any = {
+          source: "itunes",
+          source_id: String(track.trackId || 0),
+          title: track.trackName || "",
+          audio_url: track.previewUrl || null,
+          preview_url: track.previewUrl || null,
+          duration: track.trackTimeMillis || 0,
+          track_number: null,
+          cover_url: (track.artworkUrl100 || "").replace("100x100", "300x300") || null,
+          release_date: null,
+          genre: null,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { data: existing } = await fetch(
+          `${supabaseUrl}/rest/v1/tracks?source=itunes&source_id=${encodeURIComponent(String(trackData.source_id))}&limit=1`,
+          {
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+          }
+        ).then((r) => r.json()).catch(() => null);
+
+        if (existing && existing.length > 0) {
+          await fetch(`${supabaseUrl}/rest/v1/tracks?id=eq.${existing[0].id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json", apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+            body: JSON.stringify(trackData),
+          }).catch(() => {});
+          log.tracks_updated++;
+        } else {
+          trackData.created_at = new Date().toISOString();
+          const { data: newTrack } = await fetch(
+            `${supabaseUrl}/rest/v1/tracks`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json", apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+              body: JSON.stringify(trackData),
+            }
+          ).then((r) => r.json()).catch(() => null);
+
+          if (newTrack) log.tracks_added++;
+        }
+      }
+
+      await sleep(200);
+    } catch (e: any) {
+      log.error_message = `iTunes chart error: ${e.message}`;
+    }
+  }
+}
+
+async function finish(
+  supabaseUrl: string,
+  supabaseKey: string,
+  log: Record<string, any>,
+  start: number
+) {
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/sync_logs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+      body: JSON.stringify(log),
+    }).catch(() => {});
+  } catch (_) {}
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

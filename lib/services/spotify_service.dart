@@ -12,8 +12,8 @@ class SpotifyCategory {
 }
 
 class SpotifyService {
-  static const _clientId = '454f2a3d05e44052b2f6cbf0dee15765';
-  static const _clientSecret = 'b2a2ae2a96f94e928171dc525aa07a4c';
+  static const _clientId = '';
+  static const _clientSecret = '';
   static const _tokenUrl = 'https://accounts.spotify.com/api/token';
   static const _categoriesUrl = 'https://api.spotify.com/v1/browse/categories';
 

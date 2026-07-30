@@ -1,0 +1,532 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+const JAMENDO_CLIENT_ID = Deno.env.get("JAMENDO_CLIENT_ID") || "";
+const JAMENDO_BASE = "https://api.jamendo.com/v3.0";
+
+serve(async (req) => {
+  const start = Date.now();
+  const log: Record<string, any> = {
+    source: "jamendo",
+    started_at: new Date().toISOString(),
+    status: "running",
+    albums_found: 0,
+    albums_added: 0,
+    albums_updated: 0,
+    tracks_found: 0,
+    tracks_added: 0,
+    tracks_updated: 0,
+    playlists_found: 0,
+    playlists_added: 0,
+    playlists_updated: 0,
+    artists_found: 0,
+    artists_added: 0,
+  };
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_KEY")!;
+
+    const { data: config } = await fetch(
+      `${supabaseUrl}/rest/v1/sync_config?source=jamendo&limit=1`,
+      {
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+        },
+      }
+    ).then((r) => r.json()).catch(() => null);
+
+    if (!config?.enabled) {
+      log.status = "skipped";
+      log.error_message = "Jamendo sync is disabled";
+      await finish(supabaseUrl, supabaseKey, log, start);
+      return new Response(JSON.stringify(log), { status: 200 });
+    }
+
+    const limit = config.batch_size || 50;
+
+    await syncAlbums(supabaseUrl, supabaseKey, limit, log);
+    await syncTracks(supabaseUrl, supabaseKey, limit, log);
+    await syncPlaylists(supabaseUrl, supabaseKey, limit, log);
+
+    log.status = "success";
+  } catch (e: any) {
+    log.status = "failed";
+    log.error_message = e.message;
+  }
+
+  log.finished_at = new Date().toISOString();
+  log.duration_ms = Date.now() - start;
+  await finish(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_KEY")!, log, start);
+  return new Response(JSON.stringify(log), { status: 200 });
+});
+
+async function syncAlbums(
+  supabaseUrl: string,
+  supabaseKey: string,
+  limit: number,
+  log: Record<string, any>
+) {
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    try {
+      const url = `${JAMENDO_BASE}/albums?client_id=${JAMENDO_CLIENT_ID}&format=json&limit=${limit}&page=${page}&order=popularity_total_desc`;
+      const res = await fetch(url).then((r) => r.json());
+      const results = res?.results || [];
+
+      if (results.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      log.albums_found += results.length;
+
+      for (const album of results) {
+        const artistName = album.artist_name || "";
+        let artistId = null;
+
+        const { data: existingArtist } = await fetch(
+          `${supabaseUrl}/rest/v1/artists?source=jamendo&source_id=${encodeURIComponent(album.artist_id || "")}&limit=1`,
+          {
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+          }
+        ).then((r) => r.json()).catch(() => null);
+
+        if (existingArtist && existingArtist.length > 0) {
+          artistId = existingArtist[0].id;
+          await fetch(`${supabaseUrl}/rest/v1/artists?id=eq.${artistId}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: supabaseKey,
+              Authorization: `Bearer ${supabaseKey}`,
+            },
+            body: JSON.stringify({ name: artistName, updated_at: new Date().toISOString() }),
+          }).catch(() => {});
+        } else {
+          const { data: newArtist } = await fetch(
+            `${supabaseUrl}/rest/v1/artists`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                apikey: supabaseKey,
+                Authorization: `Bearer ${supabaseKey}`,
+              },
+              body: JSON.stringify({
+                source: "jamendo",
+                source_id: String(album.artist_id || ""),
+                name: artistName,
+                image_url: null,
+                genre: album.tags || null,
+              }),
+            }
+          ).then((r) => r.json()).catch(() => null);
+
+          if (newArtist) {
+            artistId = newArtist.id;
+            log.artists_added++;
+          }
+          log.artists_found++;
+        }
+
+        if (!artistId && artistName) {
+          const { data: fuzzyArtist } = await fetch(
+            `${supabaseUrl}/rest/v1/artists?source=jamendo&name=ilike.${encodeURIComponent(artistName)}&limit=1`,
+            {
+              headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+            }
+          ).then((r) => r.json()).catch(() => null);
+
+          if (fuzzyArtist && fuzzyArtist.length > 0) {
+            artistId = fuzzyArtist[0].id;
+          }
+        }
+
+        const existing = await fetch(
+          `${supabaseUrl}/rest/v1/albums?source=jamendo&source_id=${encodeURIComponent(String(album.id || ""))}&limit=1`,
+          {
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+          }
+        ).then((r) => r.json()).catch(() => null);
+
+        const albumData: any = {
+          source: "jamendo",
+          source_id: String(album.id || ""),
+          title: album.name || "",
+          cover_url: album.image || null,
+          release_date: album.release_date || null,
+          genre: album.tags || null,
+          track_count: album.tracks?.length || 0,
+          total_duration: 0,
+          artist_id: artistId,
+          updated_at: new Date().toISOString(),
+        };
+
+        if (existing && existing.length > 0) {
+          await fetch(`${supabaseUrl}/rest/v1/albums?id=eq.${existing[0].id}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: supabaseKey,
+              Authorization: `Bearer ${supabaseKey}`,
+            },
+            body: JSON.stringify(albumData),
+          }).catch(() => {});
+          log.albums_updated++;
+        } else {
+          albumData.created_at = new Date().toISOString();
+          const { data: newAlbum } = await fetch(
+            `${supabaseUrl}/rest/v1/albums`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                apikey: supabaseKey,
+                Authorization: `Bearer ${supabaseKey}`,
+              },
+              body: JSON.stringify(albumData),
+            }
+          ).then((r) => r.json()).catch(() => null);
+
+          if (newAlbum) {
+            log.albums_added++;
+            await fetchAlbumTracks(supabaseUrl, supabaseKey, newAlbum.id, album.id, log);
+          }
+        }
+      }
+
+      page++;
+      await sleep(200);
+    } catch (e: any) {
+      log.error_message = `Jamendo albums pagination error: ${e.message}`;
+      hasMore = false;
+    }
+  }
+}
+
+async function fetchAlbumTracks(
+  supabaseUrl: string,
+  supabaseKey: string,
+  albumId: string,
+  jamendoAlbumId: string,
+  log: Record<string, any>
+) {
+  let fetched = 0;
+  const maxRetries = 3;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const url = `${JAMENDO_BASE}/albums/tracks?client_id=${JAMENDO_CLIENT_ID}&format=json&id=${jamendoAlbumId}&limit=100&order=track_number`;
+      const res = await fetch(url).then((r) => r.json());
+      const tracks = res?.results || [];
+
+      if (fetched === 0 && tracks.length === 0 && attempt < maxRetries) {
+        continue;
+      }
+
+      log.tracks_found += tracks.length;
+      fetched = tracks.length;
+
+      for (const track of tracks) {
+        const trackData: any = {
+          source: "jamendo",
+          source_id: String(track.id || ""),
+          title: track.name || "",
+          audio_url: track.audio || null,
+          preview_url: null,
+          duration: (track.duration || 0) * 1000,
+          track_number: track.track_number || null,
+          cover_url: null,
+          release_date: null,
+          genre: null,
+          album_id: albumId,
+          updated_at: new Date().toISOString(),
+        };
+
+        const existing = await fetch(
+          `${supabaseUrl}/rest/v1/tracks?source=jamendo&source_id=${encodeURIComponent(String(track.id || ""))}&limit=1`,
+          {
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+          }
+        ).then((r) => r.json()).catch(() => null);
+
+        if (existing && existing.length > 0) {
+          await fetch(`${supabaseUrl}/rest/v1/tracks?id=eq.${existing[0].id}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: supabaseKey,
+              Authorization: `Bearer ${supabaseKey}`,
+            },
+            body: JSON.stringify(trackData),
+          }).catch(() => {});
+          log.tracks_updated++;
+        } else {
+          trackData.created_at = new Date().toISOString();
+          const { data: newTrack } = await fetch(
+            `${supabaseUrl}/rest/v1/tracks`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                apikey: supabaseKey,
+                Authorization: `Bearer ${supabaseKey}`,
+              },
+              body: JSON.stringify(trackData),
+            }
+          ).then((r) => r.json()).catch(() => null);
+
+          if (newTrack) log.tracks_added++;
+        }
+      }
+
+      if (tracks.length < 100) break;
+      break;
+    } catch (e: any) {
+      if (attempt === maxRetries) {
+        log.error_message = `Jamendo tracks error for album ${albumId}: ${e.message}`;
+      }
+      await sleep(1000 * attempt);
+    }
+  }
+}
+
+async function syncTracks(
+  supabaseUrl: string,
+  supabaseKey: string,
+  limit: number,
+  log: Record<string, any>
+) {
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    try {
+      const url = `${JAMENDO_BASE}/tracks?client_id=${JAMENDO_CLIENT_ID}&format=json&limit=${limit}&page=${page}&order=popularity_total_desc`;
+      const res = await fetch(url).then((r) => r.json());
+      const results = res?.results || [];
+
+      if (results.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      log.tracks_found += results.length;
+
+      for (const track of results) {
+        const trackData: any = {
+          source: "jamendo",
+          source_id: String(track.id || ""),
+          title: track.name || "",
+          audio_url: track.audio || null,
+          preview_url: null,
+          duration: (track.duration || 0) * 1000,
+          track_number: track.track_number || null,
+          cover_url: track.image || null,
+          release_date: track.release_date || null,
+          genre: track.tags || null,
+          updated_at: new Date().toISOString(),
+        };
+
+        const existing = await fetch(
+          `${supabaseUrl}/rest/v1/tracks?source=jamendo&source_id=${encodeURIComponent(String(track.id || ""))}&limit=1`,
+          {
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+          }
+        ).then((r) => r.json()).catch(() => null);
+
+        if (existing && existing.length > 0) {
+          await fetch(`${supabaseUrl}/rest/v1/tracks?id=eq.${existing[0].id}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: supabaseKey,
+              Authorization: `Bearer ${supabaseKey}`,
+            },
+            body: JSON.stringify(trackData),
+          }).catch(() => {});
+          log.tracks_updated++;
+        } else {
+          trackData.created_at = new Date().toISOString();
+          const { data: newTrack } = await fetch(
+            `${supabaseUrl}/rest/v1/tracks`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                apikey: supabaseKey,
+                Authorization: `Bearer ${supabaseKey}`,
+              },
+              body: JSON.stringify(trackData),
+            }
+          ).then((r) => r.json()).catch(() => null);
+
+          if (newTrack) log.tracks_added++;
+        }
+      }
+
+      page++;
+      await sleep(200);
+    } catch (e: any) {
+      log.error_message = `Jamendo tracks error: ${e.message}`;
+      hasMore = false;
+    }
+  }
+}
+
+async function syncPlaylists(
+  supabaseUrl: string,
+  supabaseKey: string,
+  limit: number,
+  log: Record<string, any>
+) {
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    try {
+      const url = `${JAMENDO_BASE}/playlists?client_id=${JAMENDO_CLIENT_ID}&format=json&limit=${limit}&page=${page}&order=popularity_total_desc`;
+      const res = await fetch(url).then((r) => r.json());
+      const results = res?.results || [];
+
+      if (results.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      log.playlists_found += results.length;
+
+      for (const playlist of results) {
+        const playlistData: any = {
+          source: "jamendo",
+          source_id: String(playlist.id || ""),
+          title: playlist.name || "",
+          description: playlist.description || null,
+          cover_url: playlist.image || null,
+          owner_name: playlist.performer || null,
+          track_count: playlist.tracks?.length || 0,
+          updated_at: new Date().toISOString(),
+        };
+
+        const existing = await fetch(
+          `${supabaseUrl}/rest/v1/playlists?source=jamendo&source_id=${encodeURIComponent(String(playlist.id || ""))}&limit=1`,
+          {
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+          }
+        ).then((r) => r.json()).catch(() => null);
+
+        if (existing && existing.length > 0) {
+          await fetch(`${supabaseUrl}/rest/v1/playlists?id=eq.${existing[0].id}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: supabaseKey,
+              Authorization: `Bearer ${supabaseKey}`,
+            },
+            body: JSON.stringify(playlistData),
+          }).catch(() => {});
+          log.playlists_updated++;
+
+          await fetchPlaylistTracks(supabaseUrl, supabaseKey, existing[0].id, playlist.id, log);
+        } else {
+          playlistData.created_at = new Date().toISOString();
+          const { data: newPlaylist } = await fetch(
+            `${supabaseUrl}/rest/v1/playlists`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                apikey: supabaseKey,
+                Authorization: `Bearer ${supabaseKey}`,
+              },
+              body: JSON.stringify(playlistData),
+            }
+          ).then((r) => r.json()).catch(() => null);
+
+          if (newPlaylist) {
+            log.playlists_added++;
+            await fetchPlaylistTracks(supabaseUrl, supabaseKey, newPlaylist.id, playlist.id, log);
+          }
+        }
+      }
+
+      page++;
+      await sleep(200);
+    } catch (e: any) {
+      log.error_message = `Jamendo playlists error: ${e.message}`;
+      hasMore = false;
+    }
+  }
+}
+
+async function fetchPlaylistTracks(
+  supabaseUrl: string,
+  supabaseKey: string,
+  playlistDbId: string,
+  jamendoPlaylistId: string,
+  log: Record<string, any>
+) {
+  try {
+    const url = `${JAMENDO_BASE}/playlists/tracks?client_id=${JAMENDO_CLIENT_ID}&format=json&id=${jamendoPlaylistId}&limit=100`;
+    const res = await fetch(url).then((r) => r.json());
+    const playlistTracks = res?.results || [];
+
+    for (let i = 0; i < playlistTracks.length; i++) {
+      const pt = playlistTracks[i];
+      const trackId = pt.track?.id;
+      if (!trackId) continue;
+
+      const { data: track } = await fetch(
+        `${supabaseUrl}/rest/v1/tracks?source=jamendo&source_id=${encodeURIComponent(String(trackId))}&limit=1`,
+        {
+          headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+        }
+      ).then((r) => r.json()).catch(() => null);
+
+      if (track && track.length > 0) {
+        await fetch(`${supabaseUrl}/rest/v1/playlist_tracks`, {
+          method: "INSERT",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: supabaseKey,
+            Authorization: `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({
+            playlist_id: playlistDbId,
+            track_id: track[0].id,
+            position: i,
+            added_at: new Date().toISOString(),
+          }),
+        }).catch(() => {});
+      }
+    }
+  } catch (e: any) {
+    console.error("Jamendo playlist tracks error:", e.message);
+  }
+}
+
+async function finish(
+  supabaseUrl: string,
+  supabaseKey: string,
+  log: Record<string, any>,
+  start: number
+) {
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/sync_logs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify(log),
+    }).catch(() => {});
+  } catch (_) {}
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

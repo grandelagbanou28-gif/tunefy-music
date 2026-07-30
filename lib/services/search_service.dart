@@ -48,8 +48,8 @@ class ArtistInfo {
 class SearchService {
   static const String _ytMusicUrl = 'https://music.youtube.com/youtubei/v1';
   static const String _ytUrl = 'https://www.youtube.com/youtubei/v1';
-  static const String _apiKey = 'AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30';
-  static const String _ytApiKey = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
+  static const String _apiKey = '';
+  static const String _ytApiKey = '';
   static String get _saavnUrl => ServerConfigService.muzoBackendUrl;
 
   static Map<String, String> _getMusicHeaders() {
