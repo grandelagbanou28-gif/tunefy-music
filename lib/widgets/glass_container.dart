@@ -1,0 +1,54 @@
+import 'dart:ui';
+import 'package:flutter/material.dart';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class GlassContainer extends ConsumerWidget {
+  final Widget child;
+  final double blur;
+  final double opacity;
+  final Color color;
+  final BorderRadius? borderRadius;
+  final EdgeInsetsGeometry? padding;
+  final EdgeInsetsGeometry? margin;
+  final BoxBorder? border;
+
+  const GlassContainer({
+    super.key,
+    required this.child,
+    this.blur = 15.0,
+    this.opacity = 0.2,
+    this.color = Colors.white,
+    this.borderRadius,
+    this.padding,
+    this.margin,
+    this.border,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      margin: margin,
+      child: ClipRRect(
+        borderRadius: borderRadius ?? BorderRadius.zero,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          child: Container(
+            padding: padding,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: opacity),
+              borderRadius: borderRadius,
+              border:
+                  border ??
+                  Border.all(
+                    color: (Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black).withValues(alpha: 0.1),
+                    width: 1.0,
+                  ),
+            ),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
