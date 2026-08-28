@@ -46,7 +46,11 @@ class StorageService {
   final ValueNotifier<String?> errorNotifier = ValueNotifier(null);
 
   Future<void> init() async {
-    await Hive.initFlutter();
+    if (kIsWeb) {
+      Hive.init(''); // IndexedDB backend on web (path_provider unavailable)
+    } else {
+      await Hive.initFlutter();
+    }
     await Hive.openBox(_settingsBoxName);
     await Hive.openBox(_downloadsBoxName);
     await Hive.openBox(_artistImagesBoxName);

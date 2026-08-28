@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:math';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -61,6 +61,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       );
       if (picked == null) return; // user cancelled — not an error
       if (!mounted) return;
+
+      if (kIsWeb) {
+        debugPrint('Profile photo upload not available on web');
+        return;
+      }
 
       final dir = await getApplicationDocumentsDirectory();
       final newPath =

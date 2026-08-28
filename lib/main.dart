@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -71,17 +72,24 @@ Future<void> main() async {
 
   final container = ProviderContainer();
 
-  // Parallelize initialization
-  await Future.wait([
-    JustAudioBackground.init(
-      androidNotificationChannelId: 'com.ryanheise.bg_demo.channel.audio',
-      androidNotificationChannelName: 'Audio playback',
-      androidNotificationOngoing: true,
-      androidNotificationIcon: 'drawable/ic_notification',
-    ),
-    container.read(storageServiceProvider).init(),
-    NotificationService().init(),
-  ]);
+  // Parallelize initialization. Skipping web-incompatible plugins on the web
+  // (just_audio_background / flutter_local_notifications have no web support);
+  // each future is guarded so one failure never blocks the app from starting.
+  final initFutures = <Future<void>>[
+    _safeInitializer(container.read(storageServiceProvider).init()),
+  ];
+  if (!kIsWeb) {
+    initFutures.addAll([
+      _safeInitializer(JustAudioBackground.init(
+        androidNotificationChannelId: 'com.ryanheise.bg_demo.channel.audio',
+        androidNotificationChannelName: 'Audio playback',
+        androidNotificationOngoing: true,
+        androidNotificationIcon: 'drawable/ic_notification',
+      )),
+      _safeInitializer(NotificationService().init()),
+    ]);
+  }
+  await Future.wait(initFutures);
 
   // Initialize artist database and set global reference for strict_category_filter
   try {
@@ -92,6 +100,14 @@ Future<void> main() async {
   }
 
   runApp(UncontrolledProviderScope(container: container, child: const MyApp()));
+}
+
+Future<void> _safeInitializer(Future<void> future) async {
+  try {
+    await future;
+  } catch (e) {
+    debugPrint('Init warning (non-fatal): $e');
+  }
 }
 
 class MyApp extends ConsumerWidget {

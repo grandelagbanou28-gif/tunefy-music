@@ -18,6 +18,10 @@ class DownloadService {
   }) async {
     final notificationId = result.videoId.hashCode;
     try {
+      if (kIsWeb) {
+        debugPrint('Download not supported on web');
+        return false;
+      }
       if (result.videoId == null) return false;
 
       // Check permission
