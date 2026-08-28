@@ -12,6 +12,7 @@ import 'package:muzo/services/navigator_key.dart';
 import 'package:muzo/services/storage_service.dart';
 import 'package:muzo/widgets/glass_snackbar.dart';
 import 'package:muzo/services/stream_extraction_service.dart';
+import 'package:http/http.dart' as http;
 
 class AudioHandler {
   final AudioPlayer _player = AudioPlayer();
@@ -538,13 +539,18 @@ class AudioHandler {
   /// stopping with an error toast. An error snack is only shown when the whole
   /// remaining queue is unplayable — so playback errors stop being a part of
   /// normal listening. A rapid re-tap interrupts play() and is ignored.
-  void _playWithAutoSkip({int skipsLeft = 2}) {
+  void _playWithAutoSkip({int? skipsLeft}) {
+    // One or two dead tracks in a big list must not look like a global
+    // failure: budget as many consecutive skips as there are tracks left
+    // (capped) instead of giving up after the second error.
+    final budget = skipsLeft ?? (_player.sequence?.length ?? 0).clamp(0, 20);
     unawaited(_player.play().catchError((Object e) {
       if (e is PlayerInterruptedException) return;
-      debugPrint('Playback error ($skipsLeft skips left): $e');
-      if (skipsLeft > 0 && _player.hasNext) {
-        unawaited(
-            _player.seekToNext().then((_) => _playWithAutoSkip(skipsLeft: skipsLeft - 1)));
+      debugPrint('Playback error ($budget skips left): $e');
+      if (budget > 0 && _player.hasNext) {
+        unawaited(_player
+            .seekToNext()
+            .then((_) => _playWithAutoSkip(skipsLeft: budget - 1)));
         return;
       }
       final context = navigatorKey.currentContext;
@@ -779,42 +785,42 @@ class ResolvingAudioSource extends StreamAudioSource {
     await future;
   }
 
-  Future<HttpClientResponse> _makeRequest(int? start, int? end) async {
-    final client = HttpClient();
-    final request = await client.getUrl(Uri.parse(_resolvedUrl!));
-    request.headers.add(
-      'User-Agent',
-      'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Mobile Safari/537.36',
-    );
+  Future<http.StreamedResponse> _makeRequest(int? start, int? end) async {
+    // package:http works on every platform, web included. dart:io's
+    // HttpClient throws UnsupportedError on web, which killed every queued
+    // (lazy) playlist — this is what made playback "unavailable".
+    final request = http.Request('GET', Uri.parse(_resolvedUrl!));
+    request.headers['User-Agent'] =
+        'Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.181 Mobile Safari/537.36';
 
     // just_audio calls request(0, -1) for the whole stream. Sending a Range
     // like "bytes=0--2" makes CDNs (e.g. Saavn) fail the request: always build
     // a valid header and fall back to an open-ended range when unknown.
     if (start != null && start > 0) {
-      request.headers.add(
-        'Range',
-        'bytes=$start-${(end != null && end > start) ? (end - 1) : ""}',
-      );
+      request.headers['Range'] =
+          'bytes=$start-${(end != null && end > start) ? (end - 1) : ""}';
     }
 
-    return await request.close();
+    return await http.Client().send(request);
   }
 
   @override
   Future<StreamAudioResponse> request([int? start, int? end]) async {
-    final downloadPath = storage.getDownloadPath(videoId);
-    if (downloadPath != null && await File(downloadPath).exists()) {
-      final file = File(downloadPath);
-      final length = await file.length();
-      final s = start ?? 0;
-      final e = end ?? length;
-      return StreamAudioResponse(
-        sourceLength: length,
-        contentLength: e - s,
-        offset: s,
-        contentType: 'audio/mpeg',
-        stream: file.openRead(s, e),
-      );
+    if (!kIsWeb) {
+      final downloadPath = storage.getDownloadPath(videoId);
+      if (downloadPath != null && await File(downloadPath).exists()) {
+        final file = File(downloadPath);
+        final length = await file.length();
+        final s = start ?? 0;
+        final e = end ?? length;
+        return StreamAudioResponse(
+          sourceLength: length,
+          contentLength: e - s,
+          offset: s,
+          contentType: 'audio/mpeg',
+          stream: file.openRead(s, e),
+        );
+      }
     }
 
     if (_resolvedUrl == null) {
@@ -828,7 +834,7 @@ class ResolvingAudioSource extends StreamAudioSource {
     // The stream backend is flaky, so a single failed request must never take
     // down playback: retry a couple of times with a short backoff, then skip
     // the track (empty response) instead of throwing.
-    HttpClientResponse? response;
+    http.StreamedResponse? response;
     for (var attempt = 1; attempt <= 3; attempt++) {
       try {
         final r = await _makeRequest(start, end);
@@ -857,9 +863,9 @@ class ResolvingAudioSource extends StreamAudioSource {
       return _emptyResponse(start);
     }
 
-    final contentLength = response.contentLength;
+    final contentLength = response.contentLength ?? -1;
     int sourceLength = contentLength;
-    final contentRange = response.headers.value('content-range');
+    final contentRange = response.headers['content-range'];
     if (contentRange != null) {
       final parts = contentRange.split('/');
       if (parts.length == 2) {
@@ -873,9 +879,8 @@ class ResolvingAudioSource extends StreamAudioSource {
       sourceLength: sourceLength,
       contentLength: contentLength,
       offset: start ?? 0,
-      contentType:
-          response.headers.contentType?.toString() ?? 'audio/mpeg',
-      stream: response,
+      contentType: response.headers['content-type'] ?? 'audio/mpeg',
+      stream: response.stream,
     );
   }
 
