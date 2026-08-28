@@ -1,7 +1,7 @@
-# Muzo — Premium Music Client
+# Tunefy — Premium Music Client
 
 <p align="center">
-  <img src="assets/logo 1.webp" alt="Muzo Logo" width="150" height="150" />
+  <img src="assets/logo 1.webp" alt="Tunefy Logo" width="150" height="150" />
 </p>
 
 <p align="center">
@@ -10,26 +10,22 @@
 </p>
 
 <p align="center">
-  <a href="https://play.google.com/store/apps/details?id=com.Shashwat.Muzo">
-    <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="60" />
-  </a>
-</p>
-
-<p align="center">
   <img src="https://img.shields.io/badge/Flutter-3.x-02569B?logo=flutter&logoColor=white" alt="Flutter" />
   <img src="https://img.shields.io/badge/Dart-3.x-0175C2?logo=dart&logoColor=white" alt="Dart" />
   <img src="https://img.shields.io/badge/Platform-Android%20%7C%20iOS%20%7C%20macOS-lightgrey" alt="Platform" />
-  <img src="https://img.shields.io/badge/Version-2.0.0-blueviolet" alt="Version" />
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License" />
 </p>
 
 ---
 
-> [!WARNING]
-> **GitHub Releases Discontinued**  
-> No more releases or updates will be made on GitHub. All future updates will be distributed exclusively through the **[Google Play Store](https://play.google.com/store/apps/details?id=com.Shashwat.Muzo)**.
+Tunefy is a feature-rich, privacy-focused YouTube Music client built with Flutter.
+It offers a premium ad-free experience with background playback, offline downloads,
+synchronized & karaoke lyrics, a modern Liquid Glass UI, smart background caching,
+Spotify playlist imports, a sleep timer, and community sharing — with or without an account.
 
-Muzo is a feature-rich, privacy-focused YouTube Music client built with Flutter. It is now available on the [Google Play Store](https://play.google.com/store/apps/details?id=com.Shashwat.Muzo)! It offers a premium ad-free experience with background playback, offline downloads, synchronized & karaoke lyrics, a modern Liquid Glass UI, smart background caching, Spotify playlist imports, a sleep timer, and community sharing — with or without an account.
+> [!NOTE]
+> Tunefy is distributed directly from this repository (APK releases). It is **not** available
+> on the Google Play Store.
 
 ---
 
@@ -49,6 +45,7 @@ Muzo is a feature-rich, privacy-focused YouTube Music client built with Flutter.
 - **Lofi Mode** — Transform any track into a Lofi vibe with slowed speed (0.9×), pitch correction, and native reverb effects.
 - **Multi-Language Audio & Quality Control** — Detects and switches between available languages and streams in High, Medium, or Low quality.
 - **Background Playback & Native Effects** — Keep music playing with the screen off while utilizing platform-specific audio effects.
+- **Podcasts** — Rich podcast discovery and playback with a dedicated library.
 
 ### <img src="https://img.icons8.com/fluency/18/lightning-bolt.png" align="absmiddle"/> Smart Cache System
 - **Asynchronous Background Caching** — Automatically caches the audio stream of newly added tracks in the background upon adding them to playlists, favorites, or the library.
@@ -69,42 +66,15 @@ Muzo is a feature-rich, privacy-focused YouTube Music client built with Flutter.
 - **Optional Accounts & Cloud Sync** — Create an account or sign in with Google to upload your own tracks and view your Apple-style Profile Card.
 - **Privacy First** — No login required. All data (favorites, playlists, history) is stored locally by default.
 - **Zero-Wait Launch** — Parallel background loading ensures instant app initialization.
-- **Ad-Free & Reliable** — Uninterrupted listening with robust RapidAPI and Metadata API Relay fallback (utilizing Hugging Face bucket caching) to guarantee playback.
-- **Share to Play** — Share links from YouTube or YouTube Music directly into Muzo.
-- **Muzo Deep Linking (`muzo://`)** — Full custom URL scheme support to instantly open/play songs (`muzo://s/<id>`), artists (`muzo://artist/<id>`), albums (`muzo://album/<id>`), and playlists (`muzo://playlist/<id>`) directly via browser links or shared Ytify integration URLs.
-
----
-
-## <img src="https://img.icons8.com/fluency/20/coffee-to-go.png" align="absmiddle"/> Support & Donations
-
-If you love Muzo and want to support its ongoing development, consider buying me a coffee or donating! Your support keeps the project alive and ad-free.
-
-> [!NOTE]
-> All cryptocurrency addresses below accept **USDT** on their respective networks.
-
-### <img src="https://img.icons8.com/fluency/18/qr-code.png" align="absmiddle"/> UPI (India)
-- **UPI ID:** `shashwat22817@fam`
-
-### <img src="https://img.icons8.com/fluency/18/bitcoin.png" align="absmiddle"/> Cryptocurrency (USDT)
-
-| Network | USDT Address |
-| :--- | :--- |
-| **USDT (ERC-20)** | `0xAF01BD2867122f46e3cFeC9449068E021C746f25` |
-| **Optimism (OP)** | `0xAF01BD2867122f46e3cFeC9449068E021C746f25` |
-| **Arbitrum One (ARETH)** | `0xAF01BD2867122f46e3cFeC9449068E021C746f25` |
-| **opBNB** | `0xAF01BD2867122f46e3cFeC9449068E021C746f25` |
-| **BNB Smart Chain (BEP-20)** | `0xAF01BD2867122f46e3cFeC9449068E021C746f25` |
-| **Solana (SOL)** | `0xAF01BD2867122f46e3cFeC9449068E021C746f25` |
-| **TRON (TRC-20)** | `TRvZLT4F3W2xrKmduc6fQ6RLJM6Jy5ny7w` |
-| **Avalanche C-Chain (AVAX)** | `0xAF01BD2867122f46e3cFeC9449068E021C746f25` |
-| **Celo** | `0xAF01BD2867122f46e3cFeC9449068E021C746f25` |
-| **Polygon (MATIC)** | `0xAF01BD2867122f46e3cFeC9449068E021C746f25` |
+- **Ad-Free & Reliable** — Uninterrupted listening with robust open-source API relays (Last.fm, MusicBrainz, iTunes RSS) to guarantee playback.
+- **Share to Play** — Share links from YouTube or YouTube Music directly into Tunefy.
+- **Tunefy Deep Linking** — Full custom URL scheme support to instantly open/play songs, artists, albums, and playlists directly via browser links or shared integration URLs.
 
 ---
 
 ## <img src="https://img.icons8.com/fluency/20/globe.png" align="absmiddle"/> Localisation Status
 
-Muzo is fully localised and supports multiple languages. Below is the translation completion status for each supported language:
+Tunefy is fully localised and supports multiple languages. Below is the translation completion status for each supported language:
 
 | Language | Code | Progress | Coverage |
 | :--- | :---: | :--- | :---: |
@@ -196,12 +166,12 @@ Muzo is fully localised and supports multiple languages. Below is the translatio
 | **State Management** | [Riverpod](https://riverpod.dev/) |
 | **Audio Engine** | [Just Audio](https://pub.dev/packages/just_audio) & [Audio Service](https://pub.dev/packages/audio_service) |
 | **YouTube Extraction** | [youtube_explode_dart](https://github.com/Hexer10/youtube_explode_dart) (fork by [anandnet](https://github.com/anandnet)) |
-| **Music Metadata API** | [JioSaavn API](https://github.com/n-ce/Uma) — powered by [n-ce/Uma](https://github.com/n-ce/Uma) |
+| **Music Metadata API** | Open APIs — last.fm, MusicBrainz, iTunes RSS + YouTube Music |
 | **Lyrics** | [flutter_lyric](https://pub.dev/packages/flutter_lyric) + custom karaoke engine |
 | **Local Storage** | [Hive](https://docs.hivedb.dev/) |
 | **Networking** | [Dio](https://pub.dev/packages/dio) & [Http](https://pub.dev/packages/http) |
 | **UI Components** | `liquid_glass_easy`, [FluentUI System Icons](https://pub.dev/packages/fluentui_system_icons), [Google Fonts](https://pub.dev/packages/google_fonts), [Cached Network Image](https://pub.dev/packages/cached_network_image) |
-| **API** | Custom YouTube Internal API & RapidAPI (fallback) |
+| **API** | Custom YouTube Internal API + open-source relays (fallback) |
 
 ---
 
@@ -218,8 +188,8 @@ Muzo is fully localised and supports multiple languages. Below is the translatio
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/Shashwat-CODING/Muzo.git
-   cd Muzo
+   git clone https://github.com/grandelagbanou28-gif/tunefy-music.git
+   cd tunefy-music
    ```
 
 2. **Install dependencies:**
@@ -261,18 +231,18 @@ Contributions are welcome! Whether it's reporting a bug, suggesting a feature, o
 
 ## <img src="https://img.icons8.com/fluency/20/like.png" align="absmiddle"/> Acknowledgements
 
-Muzo wouldn't exist without the incredible work of these developers and projects. Huge thanks to:
+Tunefy wouldn't exist without the incredible work of these developers and projects. Huge thanks to:
 
 ### <img src="https://img.icons8.com/fluency/18/youtube.png" align="absmiddle"/> youtube_explode_dart
-A massive thank you to **[Hexer10](https://github.com/Hexer10)**, the original author of [youtube_explode_dart](https://github.com/Hexer10/youtube_explode_dart) — the backbone of Muzo's YouTube streaming and metadata extraction. Also special thanks to **[anandnet](https://github.com/anandnet)** for maintaining an up-to-date fork that keeps Muzo working with the latest YouTube changes.
+A massive thank you to **[Hexer10](https://github.com/Hexer10)**, the original author of [youtube_explode_dart](https://github.com/Hexer10/youtube_explode_dart) — the backbone of Tunefy's YouTube streaming and metadata extraction. Also special thanks to **[anandnet](https://github.com/anandnet)** for maintaining an up-to-date fork that keeps Tunefy working with the latest YouTube changes.
 
 ### <img src="https://img.icons8.com/fluency/18/music.png" align="absmiddle"/> Animesh (n-ce) — fast-saavn & ytify
 An enormous shoutout to **[Animesh (n-ce)](https://github.com/n-ce)** — creator of:
-- **[fast-saavn](https://github.com/n-ce/saavn)** — the blazing-fast, open JioSaavn API that powers Muzo's music metadata, song details, and search results.
-- **[ytify](https://github.com/n-ce/ytify)** — a beautifully minimal YouTube audio streaming web app that was a **huge source of inspiration** during Muzo's development. Animesh's approach to UI, UX, and YouTube audio handling influenced many of Muzo's design decisions. Thank you for the open-source spirit and for being so helpful throughout the development journey!
+- **[fast-saavn](https://github.com/n-ce/saavn)** — the blazing-fast, open JioSaavn API that powers Tunefy's music metadata, song details, and search results.
+- **[ytify](https://github.com/n-ce/ytify)** — a beautifully minimal YouTube audio streaming web app that was a **huge source of inspiration** during Tunefy's development. Animesh's approach to UI, UX, and YouTube audio handling influenced many of Tunefy's design decisions. Thank you for the open-source spirit and for being so helpful throughout the development journey!
 
 ### <img src="https://img.icons8.com/fluency/18/open-box.png" align="absmiddle"/> Open-Source Libraries
-Muzo stands on the shoulders of these amazing Flutter/Dart packages:
+Tunefy stands on the shoulders of these amazing Flutter/Dart packages:
 
 | Package | Author / Maintainers |
 |---|---|
@@ -296,37 +266,25 @@ Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more informa
 
 ---
 
-<p align="center">
-  Built with
-  <img src="https://uxwing.com/wp-content/themes/uxwing/download/relationship-love/red-heart-icon.png" alt="love" height="16" />
-  <img src="https://uxwing.com/wp-content/themes/uxwing/download/brands-and-social-media/claude-ai-icon.png" alt="Claude AI" height="16" />
-  <img src="https://uxwing.com/wp-content/themes/uxwing/download/brands-and-social-media/google-gemini-icon.png" alt="Gemini AI" height="16" />
-  <img src="https://files.brandlogos.net/svg/HNipmYPqfV/Google_Antigravity-logo_brandlogos.net_e23c83.svg" alt="Antigravity" height="16" />
-  <br/>
-  By <strong>Shashwat</strong>
-</p>
+## Backend API (`backend/`)
 
----
-
-## Backend API (ackend/)
-
-Le dossier [ackend/](backend/) contient l'API Node.js/Express qui alimente l'app
+Le dossier [`backend/`](backend/) contient l'API Node.js/Express qui alimente l'app
 (YouTube Music via youtubei.js, plus des sources ouvertes : Last.fm pour les genres,
 MusicBrainz pour les nouvelles sorties et les décennies).
 
 | Endpoint | Description |
 | --- | --- |
-| /api/search | Recherche musique / vidéos |
-| /api/trending | Tendances |
-| /api/charts | Charts YT Music |
-| /api/playlist/:id | Détail playlist |
-| /api/moods / /api/moods/:id | Catégories & moods (fallback Last.fm) |
-| /api/tags?tag=… | Genres top titres/albums (Last.fm) |
-| /api/newreleases | Nouvelles sorties (MusicBrainz) |
-| /api/decades?year=… | Albums par décennie (MusicBrainz) |
-| /api/categories | Liste des catégories |
+| `/api/search` | Recherche musique / vidéos |
+| `/api/trending` | Tendances |
+| `/api/charts` | Charts YT Music |
+| `/api/playlist/:id` | Détail playlist |
+| `/api/moods` / `/api/moods/:id` | Catégories & moods (fallback Last.fm) |
+| `/api/tags?tag=` | Genres top titres/albums (Last.fm) |
+| `/api/newreleases` | Nouvelles sorties (MusicBrainz) |
+| `/api/decades?year=` | Albums par décennie (MusicBrainz) |
+| `/api/categories` | Liste des catégories |
 
-**Localement** : cd backend && npm install && npm start (port 8000).
+**Localement** : `cd backend && npm install && npm start` (port 8000).
 
-**Déploiement (Vercel)** : importer ce repo sur Vercel, **Root Directory = ackend**
-(ercel.json fourni). Voir ackend/README.md pour Cloudflare/Vercel/Docker.
+**Déploiement (Vercel)** : importer ce repo sur Vercel, **Root Directory = `backend`**
+(`vercel.json` fourni). Voir `backend/README.md` pour Cloudflare/Vercel/Docker.
