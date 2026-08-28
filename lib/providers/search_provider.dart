@@ -690,6 +690,13 @@ final categorySubSongsProvider =
     final isChartCat = catLower == 'charts' ||
         catLower == 'trending' ||
         catLower == 'hit benin';
+    // Curated sub-category seeds (non-chart, non-geo) run BEFORE algorithmic
+    // resolution so curated artists always lead the section and resolution's
+    // early-return (>=3 songs) can't override them (e.g. Rap charts leaking
+    // into "Romance > French Love"). Specific seeds also cover structural
+    // subs ("All Music" / "Top Songs"); parent seeds are the fallback.
+    final subSeeds = seedsForSubCategory(category, sub);
+    final useCuratedFirst = subSeeds.isNotEmpty && !isChartCat && !geoScoped;
     if (isChartCat && !isAmbient) {
       try {
         final countries = catLower == 'hit benin'
@@ -735,32 +742,10 @@ final categorySubSongsProvider =
 
     // ─── New resolver: dispatch by category type (genre, geo, decades, etc.) ───
     final service = CategoryResolutionService(ref);
-    final resolutionResult = await service.resolve(
-      category: category,
-      sub: sub,
-      excludedArtists: excluded,
-    ).timeout(const Duration(seconds: 18), onTimeout: () => CategoryResolutionResult(
-      songs: [], logs: const [], type: CategoryType.fallback,
-    ));
 
-    if (resolutionResult.type != CategoryType.fallback) {
-      addUnique(resolutionResult.songs);
-      logResolution(resolutionResult);
-      if (resolutionResult.songs.length >= 3) {
-        final resolved = resolutionResult.songs.take(15).toList();
-        unawaited(ContentCacheService.instance.write(cacheKey, resolved));
-        return ContentCacheService.rotate(resolved, bucket);
-      }
-    }
-
-    // ─── Fallback: old pipeline for unresolved categories ───
-    // Dedicated sub-category seeds always win (they also cover structural
-    // subs like "All Music" / "Top Songs"); parent seeds are the fallback.
-    final subSeeds = seedsForSubCategory(category, sub);
-
-    if (subSeeds.isNotEmpty) {
-      // Rotate the seed order per 2-day bucket so each refresh leads with
-      // different artists → genuinely different songs, not the same top hits.
+    if (useCuratedFirst) {
+      // Curated seeds open the section: rotate per 2-day bucket so each
+      // refresh leads with different artists → genuinely different songs.
       final off = subSeeds.length > 1 ? bucket % subSeeds.length : 0;
       final orderedSeeds = ContentCacheService.rotate(subSeeds, off);
       final futures = <Future<List<MuzoItem>>>[
@@ -772,17 +757,76 @@ final categorySubSongsProvider =
         addUnique(batch);
         if (result.length >= 8) break;
       }
+      // Resolution only tops up when the curated seeds underfill; no
+      // early-return so it can never displace the curated artists.
+      if (result.length < 8) {
+        final resolutionResult = await service
+            .resolve(
+              category: category,
+              sub: sub,
+              excludedArtists: excluded,
+            )
+            .timeout(const Duration(seconds: 18), onTimeout: () =>
+                CategoryResolutionResult(
+                  songs: [], logs: const [], type: CategoryType.fallback,
+                ));
+        if (resolutionResult.type != CategoryType.fallback) {
+          addUnique(resolutionResult.songs);
+          logResolution(resolutionResult);
+        }
+      }
     } else {
-      final subQuery = queryForSubCategory(category, sub);
-      final futures = <Future<List<MuzoItem>>>[
-        ref.watch(categorySongsProvider(subQuery).future),
-        if (!isAll && subQuery.toLowerCase() != category.toLowerCase())
-          ref.watch(categorySongsProvider(category).future),
-      ];
-      final batches = await Future.wait(futures);
-      for (final batch in batches) {
-        addUnique(batch);
-        if (result.length >= 8) break;
+      final resolutionResult = await service
+          .resolve(
+            category: category,
+            sub: sub,
+            excludedArtists: excluded,
+          )
+          .timeout(const Duration(seconds: 18), onTimeout: () =>
+              CategoryResolutionResult(
+                songs: [], logs: const [], type: CategoryType.fallback,
+              ));
+
+      if (resolutionResult.type != CategoryType.fallback) {
+        addUnique(resolutionResult.songs);
+        logResolution(resolutionResult);
+        if (resolutionResult.songs.length >= 3) {
+          final resolved = resolutionResult.songs.take(15).toList();
+          unawaited(ContentCacheService.instance.write(cacheKey, resolved));
+          return ContentCacheService.rotate(resolved, bucket);
+        }
+      }
+
+      // ─── Fallback: old pipeline for unresolved categories ───
+      // Dedicated sub-category seeds are the fallback for geo-scoped and
+      // chart sections that keep algorithmic resolution / charts as the
+      // primary authority.
+      if (subSeeds.isNotEmpty) {
+        // Rotate the seed order per 2-day bucket so each refresh leads with
+        // different artists → genuinely different songs, not the same top hits.
+        final off = subSeeds.length > 1 ? bucket % subSeeds.length : 0;
+        final orderedSeeds = ContentCacheService.rotate(subSeeds, off);
+        final futures = <Future<List<MuzoItem>>>[
+          for (final seed in orderedSeeds.take(6))
+            ref.watch(categorySongsProvider(seed).future),
+        ];
+        final batches = await Future.wait(futures);
+        for (final batch in batches) {
+          addUnique(batch);
+          if (result.length >= 8) break;
+        }
+      } else {
+        final subQuery = queryForSubCategory(category, sub);
+        final futures = <Future<List<MuzoItem>>>[
+          ref.watch(categorySongsProvider(subQuery).future),
+          if (!isAll && subQuery.toLowerCase() != category.toLowerCase())
+            ref.watch(categorySongsProvider(category).future),
+        ];
+        final batches = await Future.wait(futures);
+        for (final batch in batches) {
+          addUnique(batch);
+          if (result.length >= 8) break;
+        }
       }
     }
 
@@ -893,6 +937,7 @@ final categorySubSongsProvider =
     // are inserted near the front so even healthy sections feel current, and
     // every refresh cycle brings different ones.
     if (!isChartCat &&
+        !useCuratedFirst &&
         !geoScoped &&
         !_isSpokenWordCategory(category, sub) &&
         result.length < 9) {

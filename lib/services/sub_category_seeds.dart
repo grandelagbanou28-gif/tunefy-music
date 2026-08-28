@@ -4582,6 +4582,63 @@ const Map<String, List<String>> _subCategorySeeds = {
     'S4E',
     'Double G',
   ],
+  // ─── Trending (fallback quand les charts iTunes tournent à vide) ───
+  'Trending > Afro Bangers': [
+    'Burna Boy',
+    'Wizkid',
+    'Davido',
+    'Rema',
+    'Asake',
+  ],
+  'Trending > Global Hits': [
+    'Billie Eilish',
+    'Sabrina Carpenter',
+    'Kendrick Lamar',
+    'The Weeknd',
+    'Bad Bunny',
+  ],
+  'Trending > Naija Top': [
+    'Asake',
+    'Rema',
+    'Ayra Starr',
+    'Fireboy DML',
+    'Tems',
+  ],
+  'Trending > Rising France': [
+    'Zaho de Sagazan',
+    'Luidji',
+    'SDM',
+    'Tiakola',
+    'Gazo',
+  ],
+  'Trending > South Africa Heat': [
+    'Kabza De Small',
+    'DJ Maphorisa',
+    'Focalistic',
+    'Uncle Waffles',
+    'Tyla',
+  ],
+  'Trending > Top FR du Jour': [
+    'Gazo',
+    'Tiakola',
+    'NinjaZ',
+    'Jnoss',
+    'Werenoi',
+  ],
+  'Trending > Top US du Jour': [
+    'Drake',
+    'Kendrick Lamar',
+    'Travis Scott',
+    'Tyler, The Creator',
+    'SZA',
+  ],
+  'Trending > Viral Now': [
+    'Tyla',
+    'Chappell Roan',
+    'Benson Boone',
+    'Teddy Swims',
+    'Shaboozey',
+  ],
 };
 
 /// Sub-category seeds keyed by `category > sub`. Returns the curated artist
