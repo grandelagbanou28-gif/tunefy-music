@@ -1,7 +1,7 @@
 # Tunefy — Premium Music Client
 
 <p align="center">
-  <img src="assets/logo 1.webp" alt="Tunefy Logo" width="150" height="150" />
+  <img src="assets/tunefy_logo.png" alt="Tunefy Logo" width="150" height="150" />
 </p>
 
 <p align="center">
