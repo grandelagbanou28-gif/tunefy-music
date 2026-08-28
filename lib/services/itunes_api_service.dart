@@ -258,14 +258,32 @@ class ItunesApiService {
     final durMs = (r['trackTimeMillis'] as num?)?.toInt() ?? 0;
     final dur = durMs > 0 ? durMs ~/ 1000 : 0;
     final release = DateTime.tryParse((r['releaseDate'] as String?) ?? '');
-    final cover = (r['artworkUrl100'] as String? ?? '');
-    final coverHi = _hiResArtwork(cover);
+    // Podcast episodes often expose artworkUrl600/160/60 but NOT
+    // artworkUrl100 (iOS17+ API shape) — walk the size chain in order of
+    // preference so episodes always get their show artwork.
+    final cover = (r['artworkUrl600'] as String? ??
+        r['artworkUrl100'] as String? ??
+        r['artworkUrl160'] as String? ??
+        r['artworkUrl60'] as String? ??
+        '');
+    // Bump any size to 600x600 (iTunes serves up to the largest available)
+    // unless the cover is already the 600 variant.
+    final coverHi = cover.contains('600x600')
+        ? cover
+        : cover.replaceFirst(RegExp(r'\d+x\d+bb'), '600x600bb');
+    final coverSize = cover.contains('600x600')
+        ? 600
+        : cover.contains('160x160')
+            ? 160
+            : cover.contains('60x60')
+                ? 60
+                : 100;
     final episodeUrl = r['episodeUrl'] as String? ?? '';
     return MuzoItem(
       title: (r['trackName'] as String?) ?? '',
       thumbnails: cover.isNotEmpty
           ? [
-              MuzoThumbnail(url: cover, width: 100, height: 100),
+              MuzoThumbnail(url: cover, width: coverSize, height: coverSize),
               if (coverHi.isNotEmpty && coverHi != cover)
                 MuzoThumbnail(url: coverHi, width: 600, height: 600),
             ]

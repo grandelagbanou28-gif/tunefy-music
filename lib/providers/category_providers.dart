@@ -61,7 +61,7 @@ bool _containsEveryWord(String haystack, String needle) {
 }
 
 String _hd(String? url) =>
-    (url == null || url.isEmpty) ? '' : url.replaceFirst('100x100bb', '300x300bb');
+    (url == null || url.isEmpty) ? '' : url.replaceFirst('100x100bb', '600x600bb');
 
 /// A real album found on the iTunes Search API for a category.
 class CategoryAlbum {
