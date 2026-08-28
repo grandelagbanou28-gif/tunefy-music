@@ -1255,9 +1255,9 @@ router.get('/trending', async (req, res) => {
  *                       duration_seconds:
  *                         type: number
  */
-router.get('/related/:id', async (req, res) => {
+const handleRelated = async (req, res) => {
   try {
-    const videoId = req.params.id;
+    const videoId = req.params.id || req.query.videoId || req.query.id;
 
     if (!videoId || String(videoId).trim() === '') {
       return res.status(400).json({
@@ -1278,6 +1278,9 @@ router.get('/related/:id', async (req, res) => {
       error: 'Failed to fetch related videos'
     });
   }
-});
+};
+
+router.get('/related', handleRelated);
+router.get('/related/:id', handleRelated);
 
 module.exports = router;
