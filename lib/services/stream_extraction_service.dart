@@ -310,7 +310,7 @@ class StreamExtractionService {
       );
 
       Iterable<AudioOnlyStreamInfo> audioStreams = manifest.audioOnly;
-      if (Platform.isMacOS || Platform.isIOS) {
+      if (!kIsWeb && (Platform.isMacOS || Platform.isIOS)) {
         final mp4Streams = audioStreams.where((s) => s.container == StreamContainer.mp4);
         if (mp4Streams.isNotEmpty) {
           audioStreams = mp4Streams;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:io';
@@ -75,7 +76,7 @@ class AudioHandler {
       await _player.setPitch(1.0);
     }
 
-    if (Platform.isAndroid) {
+    if (!kIsWeb && Platform.isAndroid) {
       final sessionId = _player.androidAudioSessionId;
       if (sessionId != null) {
         await _applyReverb(sessionId, enable);
@@ -232,7 +233,7 @@ class AudioHandler {
   }
 
   Future<void> _applyReverb(int sessionId, bool enable) async {
-    if (!Platform.isAndroid) return;
+    if (kIsWeb || !Platform.isAndroid) return;
     try {
       await platform.invokeMethod('enableReverb', {
         'sessionId': sessionId,

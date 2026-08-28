@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
@@ -322,7 +323,7 @@ class _IntroPage extends ConsumerWidget {
             const Spacer(flex: 3),
 
             // CTA Buttons
-            if (!Platform.isWindows) ...[
+            if (!kIsWeb && !Platform.isWindows) ...[
               SizedBox(
                 width: double.infinity,
                 height: 54,

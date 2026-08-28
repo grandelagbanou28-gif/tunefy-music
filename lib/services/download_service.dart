@@ -144,7 +144,7 @@ class DownloadService {
   }
 
   Future<bool> _requestPermission() async {
-    if (Platform.isAndroid) {
+    if (!kIsWeb && Platform.isAndroid) {
       // On Android 10+ (API 29+), scoped storage is used, so WRITE_EXTERNAL_STORAGE
       // is not needed for app-specific directories (getApplicationDocumentsDirectory).
       // However, for older versions, it might be needed.

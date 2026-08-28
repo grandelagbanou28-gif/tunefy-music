@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:muzo/services/audio_handler.dart';
@@ -20,7 +21,7 @@ class ShareService {
   ShareService(this._audioHandler);
 
   void init(BuildContext context) {
-    if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) return;
+    if (kIsWeb || Platform.isMacOS || Platform.isWindows || Platform.isLinux) return;
 
     // For sharing or opening urls/text coming from outside the app while the app is in the memory
     _intentDataStreamSubscription = ReceiveSharingIntent.instance
