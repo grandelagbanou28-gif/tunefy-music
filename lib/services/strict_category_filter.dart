@@ -443,7 +443,14 @@ bool acceptsForCategory(MuzoItem song, CategoryConstraint c) {
   // Non-geo (pure genre): a confirmed gospel artist (e.g. Sinach — "Way
   // Maker" never says "gospel") passes; otherwise the genre word is required.
   if (artistGeo != null) return true;
-  return _genreConfirmed(text, c);
+  // Mainstream genres (pop, rock, jazz, dance, electronic, soul...) — a real
+  // song's title rarely spells the genre word ("Blinding Lights" never says
+  // "pop"), so hard-requiring the word starves the section down to novelty
+  // titles that happen to literally spell it ("Soda Pop", "Pop That").
+  // Gospel keeps its strict word/artist gate (authoritative DB + hints);
+  // every other non-geo genre accepts a metadata-complete track as well.
+  if (c.genre == 'gospel') return _genreConfirmed(text, c);
+  return _genreConfirmed(text, c) || score >= 10;
 }
 
 /// Keeps only candidates that pass the strict constraint.
