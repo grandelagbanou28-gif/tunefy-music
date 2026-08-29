@@ -6,16 +6,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Persistent content cache for category sub-sections.
 ///
 /// Every resolved sub-section is stored on disk together with its save time.
-/// A cached entry is served instantly while it is younger than [ttl] (48h),
+/// A cached entry is served instantly while it is younger than [ttl] (72h),
 /// so pages open immediately and every list naturally refreshes — with fresh
-/// network data AND a new rotation order — once every 2 days.
+/// network data AND a new rotation order — once every 3 days.
 class ContentCacheService {
   ContentCacheService._();
 
   static final ContentCacheService instance = ContentCacheService._();
 
-  /// How long a cached sub-section stays valid: 2 days.
-  static const Duration ttl = Duration(hours: 48);
+  /// How long a cached sub-section stays valid: 3 days.
+  static const Duration ttl = Duration(hours: 72);
 
   static const String _prefix = 'ccache.v1.';
 
@@ -91,10 +91,10 @@ class ContentCacheService {
     } catch (_) {}
   }
 
-  /// Number of 2-day buckets since the epoch — the rotation counter that makes
-  /// "every 2 days everything refreshes" deterministic across devices.
+  /// Number of 3-day buckets since the epoch — the rotation counter that makes
+  /// "every 3 days everything refreshes" deterministic across devices.
   static int get refreshBucket =>
-      DateTime.now().toUtc().difference(DateTime.utc(2024, 1, 1)).inDays ~/ 2;
+      DateTime.now().toUtc().difference(DateTime.utc(2024, 1, 1)).inDays ~/ 3;
 
   /// Rotates a list by [offset] positions so each bucket leads with different
   /// content without discarding any item.

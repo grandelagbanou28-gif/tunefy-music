@@ -656,8 +656,8 @@ final categorySubSongsProvider =
     }
 
     // ─── 2-day refresh cache ───
-    // A fresh (<48h) cached list is served instantly: pages open without any
-    // network wait, and every bucket rotation (2 days) both re-fetches from
+    // A fresh (<72h) cached list is served instantly: pages open without any
+    // network wait, and every bucket rotation (3 days) both re-fetches from
     // the network and rotates the order, so content visibly renews.
     final cacheKey = 'catsub|$category|$sub';
     try {
@@ -1035,7 +1035,7 @@ final categorySubSongsProvider =
     audit.report();
     final finalList = result.take(10).toList();
     // Cache only sections that meet the display minimum, so a transient
-    // network failure is never frozen for 2 days.
+    // network failure is never frozen for 3 days.
     if (finalList.length >= 3) {
       unawaited(ContentCacheService.instance.write(cacheKey, finalList));
     }

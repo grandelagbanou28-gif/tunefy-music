@@ -82,8 +82,8 @@ class RssPlaylist {
 ///  • the "modern boost" that injects a couple of current chart-matching
 ///    tracks into every music sub-category so pages never feel dated.
 ///
-/// Charts are cached on disk for 48h — identical refresh cadence as the
-/// sub-section cache, so everything renews together every 2 days.
+/// Charts are cached on disk for 72h — identical refresh cadence as the
+/// sub-section cache, so everything renews together every 3 days.
 class TrendingService {
   TrendingService._();
 
@@ -98,7 +98,7 @@ class TrendingService {
 
   // ─── Fetch ────────────────────────────────────────────────────────────────
 
-  /// Current top songs of one storefront (48h disk cache).
+  /// Current top songs of one storefront (72h disk cache).
   static Future<List<TrendSong>> topSongs(String countryCode) async {
     final cc = countryCode.toLowerCase();
     final key = 'trends|$cc';
@@ -156,7 +156,7 @@ class TrendingService {
 
   // ─── Sub-category → storefront mapping ───────────────────────────────────
 
-  /// Current top albums of one storefront (48h disk cache).
+  /// Current top albums of one storefront (72h disk cache).
   static Future<List<RssAlbum>> topAlbums(String countryCode) async {
     final cc = countryCode.toLowerCase();
     final key = 'trendalb|$cc';
@@ -207,7 +207,7 @@ class TrendingService {
     }
   }
 
-  /// Current top playlists of one storefront (48h disk cache).
+  /// Current top playlists of one storefront (72h disk cache).
   static Future<List<RssPlaylist>> topPlaylists(String countryCode) async {
     final cc = countryCode.toLowerCase();
     final key = 'trendpl|$cc';
