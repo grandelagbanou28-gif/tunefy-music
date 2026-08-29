@@ -14,8 +14,8 @@ import 'package:muzo/models/user_data.dart';
 /// wrapped by the caller in try/catch — if Supabase is unreachable the app
 /// keeps working purely local (Hive) with no data loss.
 class SupabaseStore {
-  static const String _url = 'https://lvwwbuujvknzmstzmjam.supabase.co';
-  static const String _anonKey =
+  static const String url = 'https://lvwwbuujvknzmstzmjam.supabase.co';
+  static const String anonKey =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx2d3didXVqdmtuem1zdHptamFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5Mzg3NTUsImV4cCI6MjEwMzUxNDc1NX0.BsM8AaUi6GHAV6KsmS70ppFDFuyWa0Vl9mpveqyRyQA';
 
   static const String _secretKey = 'supabase_secret';
@@ -60,7 +60,7 @@ class SupabaseStore {
   Future<bool> _refresh(String refreshToken) async {
     try {
       final resp = await http.post(
-        Uri.parse('$_url/auth/v1/token?grant_type=refresh_token'),
+        Uri.parse('url/auth/v1/token?grant_type=refresh_token'),
         headers: _headers(),
         body: jsonEncode({'refresh_token': refreshToken}),
       );
@@ -80,7 +80,7 @@ if (resp.statusCode != 200) return false;
 
   Future<void> _signup() async {
     final resp = await http.post(
-      Uri.parse('$_url/auth/v1/signup'),
+      Uri.parse('url/auth/v1/signup'),
       headers: _headers(),
       body: '{}',
     );
@@ -127,8 +127,8 @@ if (resp.statusCode != 200) return false;
   }
 
   Map<String, String> _headers() => {
-        'apikey': _anonKey,
-        'Authorization': 'Bearer ${_accessToken ?? _anonKey}',
+        'apikey': anonKey,
+        'Authorization': 'Bearer ${_accessToken ?? anonKey}',
         'Content-Type': 'application/json',
       };
 
@@ -152,7 +152,7 @@ if (resp.statusCode != 200) return false;
     final q = <String, String>{'select': '*'};
     if (onConflict != null) q['on_conflict'] = onConflict;
     if (params != null) q.addAll(params);
-    return Uri.parse('$_url/rest/v1/$table').replace(queryParameters: q);
+    return Uri.parse('url/rest/v1/$table').replace(queryParameters: q);
   }
 
   Map<String, dynamic> _decode(String body) =>

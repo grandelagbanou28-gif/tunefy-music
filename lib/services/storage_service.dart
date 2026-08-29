@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:muzo/models/muzo_item.dart';
 import 'package:muzo/models/user_data.dart';
+import 'package:muzo/services/gospel_catalog_service.dart';
 import 'package:muzo/services/listening_stats_service.dart';
 import 'package:muzo/services/muzo_api_service.dart';
 import 'package:muzo/services/supabase_store.dart';
@@ -138,6 +139,8 @@ class StorageService {
     // Supabase seed + merge happens in the background (await-free so the app
     // starts immediately even offline).
     _initSupabase();
+    // Large gospel catalog (Supabase REST → Hive cache → built-in list).
+    GospelCatalogService().init();
     debugPrint('StorageService initialized');
   }
 

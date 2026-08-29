@@ -182,6 +182,19 @@ const Map<String, List<String>> _gospelByGeo = {
 
 const List<String> _regions = ['africa', 'west africa', 'east africa', 'caribbean'];
 
+/// Runtime-supplemented catalog from Supabase (`gospel_artists`): same geo keys
+/// and fuzzy matching as the built-in lists, loaded once at startup. Until it
+/// is loaded the built-in list alone gates gospel.
+Map<String, List<String>> _supplementByGeo = const {};
+void setGospelSupplement(Map<String, List<String>> byGeo) {
+  _supplementByGeo = byGeo;
+}
+
+/// Public copy of the built-in list (used by the catalog service as an offline
+/// fallback while seeding the DB).
+Map<String, List<String>> builtinGospelByGeo() =>
+    Map<String, List<String>>.unmodifiable(_gospelByGeo);
+
 /// Geo keys that contain [geo] as a member (region containment). A region key
 /// contains itself. Country keys contain only themselves.
 bool _regionContains(String container, String member) {
@@ -244,7 +257,7 @@ bool _artistMatches(String primaryArtist, String curated) {
 bool isGospelArtistIn(String primaryArtist, String geo) {
   final primary = primaryArtist.trim();
   if (primary.isEmpty) return false;
-  for (final MapEntry(key: key, value: artists) in _gospelByGeo.entries) {
+  for (final MapEntry(key: key, value: artists) in _allByGeo().entries) {
     if (!_regionContains(geo, key)) continue;
     for (final a in artists) {
       if (_artistMatches(primary, a)) return true;
@@ -259,12 +272,23 @@ bool isGospelArtistIn(String primaryArtist, String geo) {
 String? gospelArtistGeo(String primaryArtist) {
   final primary = primaryArtist.trim();
   if (primary.isEmpty) return null;
-  for (final MapEntry(key: key, value: artists) in _gospelByGeo.entries) {
+  for (final MapEntry(key: key, value: artists) in _allByGeo().entries) {
     for (final a in artists) {
       if (_artistMatches(primary, a)) return key;
     }
   }
   return null;
+}
+
+/// Built-in list merged with the runtime Supabase supplement (supplement wins
+/// when its country key matches the built-in one so the DB can override).
+Map<String, List<String>> _allByGeo() {
+  if (_supplementByGeo.isEmpty) return _gospelByGeo;
+  final merged = Map<String, List<String>>.from(_gospelByGeo);
+  for (final MapEntry(key: key, value: names) in _supplementByGeo.entries) {
+    merged.putIfAbsent(key, () => []).addAll(names);
+  }
+  return merged;
 }
 
 /// First artist name from a `displayArtist` string (before "feat.", "&", ",").
