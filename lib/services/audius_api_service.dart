@@ -67,6 +67,10 @@ class AudiusTrack {
           artistName.isNotEmpty ? [MuzoArtist(name: artistName, id: null)] : null,
       channelName: artistName.isEmpty ? null : artistName,
       audioUrl: streamUrl,
+      source: 'audius',
+      sourceId: id,
+      sourceUrl: streamUrl,
+      fetchedAt: DateTime.now(),
     );
   }
 }

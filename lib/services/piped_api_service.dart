@@ -124,6 +124,10 @@ class PipedApiService {
       durationSeconds:
           map['duration'] is int && map['duration'] > 0 ? map['duration'] as int : null,
       resultType: map['type']?.toString() == 'playlist' ? 'playlist' : 'song',
+      source: 'piped',
+      sourceId: videoId.isEmpty ? null : videoId,
+      sourceUrl: videoId.isEmpty ? null : 'https://www.youtube.com/watch?v=$videoId',
+      fetchedAt: DateTime.now(),
     );
   }
 

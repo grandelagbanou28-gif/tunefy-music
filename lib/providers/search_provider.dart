@@ -17,6 +17,7 @@ import 'package:muzo/services/content_cache_service.dart';
 import 'package:muzo/services/itunes_api_service.dart';
 import 'package:muzo/services/trending_service.dart';
 import 'package:muzo/services/multi_api_service.dart';
+import 'package:muzo/services/relevance_engine.dart';
 
 final searchControllerProvider = Provider<TextEditingController>((ref) {
   final controller = TextEditingController();
@@ -586,9 +587,11 @@ final categorySubSongsProvider =
     final bucket = ContentCacheService.refreshBucket;
     if (isSpokenCat) {
       final podCacheKey = 'podcat|$category|$sub';
+      final podAudit = CategoryAudit(category: category, sub: sub);
       try {
         final pc = await ContentCacheService.instance.readIfFresh(podCacheKey);
         if (pc != null && pc.length >= 2) {
+          podAudit.report('episodes-cache');
           return ContentCacheService.rotate(pc, bucket);
         }
       } catch (_) {}
@@ -624,13 +627,32 @@ final categorySubSongsProvider =
                 .compareTo(a.releaseDate?.millisecondsSinceEpoch ?? 0));
           }
         }
-        final podcastList = episodes.take(24).toList();
+        final podcastList = episodes
+            .map((e) => e.copyWith(
+                  verified: true,
+                  relevanceScore: 100,
+                  source: e.source ?? 'itunes podcast',
+                ))
+            .take(24)
+            .toList();
+        podAudit..onFetched(episodes.length)..onAccepted(podcastList.length);
         if (episodes.length >= 3) {
           unawaited(
               ContentCacheService.instance.write(podCacheKey, podcastList));
+          podAudit.report('episodes');
           return ContentCacheService.rotate(podcastList, bucket);
         }
-      } catch (_) {}
+        podAudit.report('episodes');
+      } catch (_) {
+        podAudit.report('episodes-error');
+      }
+
+      // ─── HARD GATE: a spoken-word/podcast sub NEVER shows music tracks ───
+      // When iTunes serves <3 real episodes (cache miss included) the section
+      // returns empty — it must never fall through to the music pipeline and
+      // surface genre songs inside "Podcasts / Comedy / News" browse rows.
+      // Real episodes, or nothing. Nothing is fabricated to fill the gap.
+      return const <MuzoItem>[];
     }
 
     // ─── 2-day refresh cache ───
@@ -645,11 +667,13 @@ final categorySubSongsProvider =
       }
     } catch (_) {}
 
-    // Strict category constraint (genre + country + language + region). A
+// Strict category constraint (genre + country + language + region). A
     // geo-scoped section (e.g. "Gospel > Benin Gospel") must ONLY show content
     // that satisfies ALL its constraints — never generic parent-category music.
     final constraint = categoryConstraintFor(category, sub);
     final geoScoped = constraint.isGeoScoped;
+
+    final audit = CategoryAudit(category: category, sub: sub);
 
     final seenArtists = <String, int>{};
     final seenIds = <String>{};
@@ -659,24 +683,63 @@ final categorySubSongsProvider =
       List<MuzoItem> batch, {
       int maxPerArtist = 1,
       bool applyConstraint = true,
+      bool sourceVerified = false,
     }) {
-      for (final song in _tuneBatchForSub(sub, batch)) {
-        if (!isActuallyPlayable(song)) continue;
-        if (isJunkSong(song.title, isAmbient: isAmbient)) continue;
-        if (applyConstraint && !acceptsForCategory(song, constraint)) continue;
-        final idKey = (song.videoId ?? '${song.title}|${song.displayArtist}').toLowerCase();
-        if (idKey.isEmpty || seenIds.contains(idKey)) continue;
+      audit.onFetched(batch.length);
+      for (final song0 in _tuneBatchForSub(sub, batch)) {
+        var song = song0;
+        if (!isActuallyPlayable(song)) {
+          audit.rejectedBecause(CategoryRejectReason.notPlayable);
+          continue;
+        }
+        if (isJunkSong(song.title, isAmbient: isAmbient)) {
+          audit.rejectedBecause(CategoryRejectReason.junkTitle);
+          continue;
+        }
+        if (applyConstraint && !acceptsForCategory(song, constraint)) {
+          final score = categoryMatchScore(song, constraint);
+          audit.rejectedBecause(
+            score == 0
+                ? CategoryRejectReason.wrongCountry
+                : CategoryRejectReason.belowThreshold,
+          );
+          continue;
+        }
+        final idKey = (song.videoId ?? '${song.title}|${song.displayArtist}')
+            .toLowerCase();
+        if (idKey.isEmpty || seenIds.contains(idKey)) {
+          audit.rejectedBecause(CategoryRejectReason.duplicate);
+          continue;
+        }
 
-        final artistKey = primaryArtistName(song.displayArtist).trim().toLowerCase();
-        if (artistKey.isNotEmpty && (seenArtists[artistKey] ?? 0) >= maxPerArtist) continue;
+        final artistKey =
+            primaryArtistName(song.displayArtist).trim().toLowerCase();
+        if (artistKey.isNotEmpty &&
+            (seenArtists[artistKey] ?? 0) >= maxPerArtist) {
+          audit.rejectedBecause(CategoryRejectReason.artistLimit);
+          continue;
+        }
         if (maxPerArtist <= 1 &&
             artistKey.isNotEmpty &&
-            excluded.contains(artistKey)) continue;
+            excluded.contains(artistKey)) {
+          audit.rejectedBecause(CategoryRejectReason.excludedArtist);
+          continue;
+        }
 
         seenIds.add(idKey);
         if (artistKey.isNotEmpty) {
           seenArtists[artistKey] = (seenArtists[artistKey] ?? 0) + 1;
         }
+        song = song.copyWith(
+          verified: applyConstraint || sourceVerified
+              ? true
+              : song.verified,
+          relevanceScore: song.relevanceScore ??
+              (applyConstraint
+                  ? categoryMatchScore(song, constraint)
+                  : null),
+        );
+        audit.onAccepted();
         result.add(song);
         if (result.length >= 15) break;
       }
@@ -724,6 +787,7 @@ final categorySubSongsProvider =
             addUnique(
               resp.results.take(2).toList(),
               applyConstraint: false,
+              sourceVerified: true,
               maxPerArtist: 3,
             );
           } catch (_) {}
@@ -731,6 +795,7 @@ final categorySubSongsProvider =
         debugPrint(
             '[Charts] "$category > $sub" trends=${trends.length} result=${result.length}');
         if (result.length >= 3) {
+          audit.report('charts');
           final chartList = result.take(15).toList();
           unawaited(ContentCacheService.instance.write(cacheKey, chartList));
           return ContentCacheService.rotate(chartList, bucket);
@@ -791,7 +856,17 @@ final categorySubSongsProvider =
         addUnique(resolutionResult.songs);
         logResolution(resolutionResult);
         if (resolutionResult.songs.length >= 3) {
-          final resolved = resolutionResult.songs.take(15).toList();
+          final resolved = resolutionResult.songs
+              .map((s) => s.copyWith(
+                  verified: true,
+                  relevanceScore: s.relevanceScore ??
+                      categoryMatchScore(s, constraint)))
+              .take(15)
+              .toList();
+          audit
+            ..onFetched(resolutionResult.songs.length)
+            ..onAccepted(resolved.length)
+            ..report('resolver');
           unawaited(ContentCacheService.instance.write(cacheKey, resolved));
           return ContentCacheService.rotate(resolved, bucket);
         }
@@ -830,27 +905,9 @@ final categorySubSongsProvider =
       }
     }
 
-    // ─── Spoken-word categories: iTunes podcast-episode source ───
-    // Podcasts / Comedy / News / Live Events have no reliable coverage in the
-    // music APIs, but iTunes' podcast directory serves real full-length
-    // episodes (MP3) that the player streams natively via user_track.
-    if (isSpokenCat && result.length < 7) {
-      try {
-        final itunes = ref.read(itunesApiServiceProvider);
-        final combined = sub.toLowerCase() == category.toLowerCase()
-            ? category
-            : '$category $sub';
-        final episodeBatches = await Future.wait([
-          itunes.searchPodcastEpisodesFrUs(sub, limit: 10),
-          if (combined.toLowerCase() != sub.toLowerCase())
-            itunes.searchPodcastEpisodesFrUs(combined, limit: 10),
-        ]);
-        for (final batch in episodeBatches) {
-          addUnique(batch, maxPerArtist: 3, applyConstraint: false);
-          if (result.length >= 8) break;
-        }
-      } catch (_) {}
-    }
+    // ─── Spoken-word categories ───
+    // Dead code since the hard gate above: spoken-word subs are fully resolved
+    // by the iTunes episode branch and can NEVER reach this music pipeline.
 
     // Strict Category-Scoped top-up.
     if (result.length < 7) {
@@ -955,7 +1012,10 @@ final categorySubSongsProvider =
                   .timeout(const Duration(seconds: 8));
               addUnique(
                 resp.results.take(1).toList(),
-                applyConstraint: false,
+                // Modern boost: the pick itself is genre-matched from TODAY's
+                // real Apple RSS chart, and the resolved track must ALSO pass
+                // the strict category gate before it can be injected.
+                applyConstraint: true,
                 maxPerArtist: 1,
               );
             } catch (_) {}
@@ -972,8 +1032,7 @@ final categorySubSongsProvider =
       } catch (_) {}
     }
 
-    debugPrint(
-        '[CatSub] "$category > $sub" seeds=${subSeeds.length} result=${result.length}');
+    audit.report();
     final finalList = result.take(10).toList();
     // Cache only sections that meet the display minimum, so a transient
     // network failure is never frozen for 2 days.

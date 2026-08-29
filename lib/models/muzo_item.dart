@@ -36,6 +36,31 @@ class MuzoItem {
   final DateTime? releaseDate;
   final dynamic dbId;
 
+  /// Which real source produced this item ("itunes", "jamendo", "audius",
+  /// "ytify", "piped", "itunes podcast"…). Used for provenance/audit.
+  final String? source;
+
+  /// Identifier of this item inside its [source] (e.g. iTunes trackId).
+  final String? sourceId;
+
+  /// Canonical URL at the source when one exists (e.g. artwork / preview).
+  final String? sourceUrl;
+
+  /// When this item was fetched. Null when it came from parsing without a
+  /// fetch (artists, channels…) — batch harvesters set it explicitly.
+  final DateTime? fetchedAt;
+
+  /// Strict relevance score (see categoryMatchScore) after validation. Only
+  /// populated for items that went through a category gate; null otherwise.
+  final int? relevanceScore;
+
+  /// True once this item passed the strict category validation gate. Badges
+  /// "verified" content in the UI/audit without altering behavior.
+  final bool verified;
+
+  /// Arbitrary original metadata from the provider, preserved verbatim.
+  final Map<String, dynamic>? metadata;
+
   MuzoItem({
     required this.title,
     required this.thumbnails,
@@ -59,6 +84,13 @@ class MuzoItem {
     this.releaseDate,
     this.dbId,
     this.audioUrl,
+    this.source,
+    this.sourceId,
+    this.sourceUrl,
+    this.fetchedAt,
+    this.relevanceScore,
+    this.verified = false,
+    this.metadata,
   });
 
   factory MuzoItem.fromJson(Map<String, dynamic> json) {
@@ -183,6 +215,18 @@ class MuzoItem {
       addedAt: json['added_at']?.toString(),
       dbId: json['db_id'],
       audioUrl: json['audioUrl']?.toString() ?? json['audio_url']?.toString(),
+      source: json['source']?.toString(),
+      sourceId: json['source_id']?.toString(),
+      sourceUrl: json['source_url']?.toString(),
+      fetchedAt: json['fetched_at'] != null
+          ? DateTime.tryParse(json['fetched_at'].toString())
+          : null,
+      relevanceScore:
+          json['relevance_score'] is int ? json['relevance_score'] : null,
+      verified: json['verified'] == true,
+      metadata: json['metadata'] is Map
+          ? Map<String, dynamic>.from(json['metadata'] as Map)
+          : null,
     );
   }
 
@@ -209,6 +253,13 @@ class MuzoItem {
       'added_at': addedAt,
       'db_id': dbId,
       'audio_url': audioUrl,
+      'source': source,
+      'source_id': sourceId,
+      'source_url': sourceUrl,
+      'fetched_at': fetchedAt?.toIso8601String(),
+      'relevance_score': relevanceScore,
+      'verified': verified,
+      'metadata': metadata,
     };
   }
 
@@ -238,6 +289,13 @@ class MuzoItem {
     String? addedAt,
     DateTime? releaseDate,
     String? audioUrl,
+    String? source,
+    String? sourceId,
+    String? sourceUrl,
+    DateTime? fetchedAt,
+    int? relevanceScore,
+    bool? verified,
+    Map<String, dynamic>? metadata,
   }) {
     return MuzoItem(
       title: title ?? this.title,
@@ -262,6 +320,13 @@ class MuzoItem {
       releaseDate: releaseDate ?? this.releaseDate,
       dbId: dbId,
       audioUrl: audioUrl ?? this.audioUrl,
+      source: source ?? this.source,
+      sourceId: sourceId ?? this.sourceId,
+      sourceUrl: sourceUrl ?? this.sourceUrl,
+      fetchedAt: fetchedAt ?? this.fetchedAt,
+      relevanceScore: relevanceScore ?? this.relevanceScore,
+      verified: verified ?? this.verified,
+      metadata: metadata ?? this.metadata,
     );
   }
 }

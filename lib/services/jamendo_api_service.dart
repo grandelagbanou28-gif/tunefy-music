@@ -53,6 +53,10 @@ class JamendoTrack {
       artists: [MuzoArtist(name: artistName, id: null)],
       album: albumName.isNotEmpty ? MuzoAlbum(name: albumName, id: '') : null,
       audioUrl: audioUrl,
+      source: 'jamendo',
+      sourceId: id,
+      sourceUrl: audioUrl,
+      fetchedAt: DateTime.now(),
     );
   }
 }

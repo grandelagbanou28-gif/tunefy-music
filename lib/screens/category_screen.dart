@@ -650,7 +650,7 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
             const Icon(Icons.music_off, color: spotifyLightGrey, size: 48),
             const SizedBox(height: 14),
             Text(
-              'No content for "$_title" yet',
+              'Aucun contenu vérifié disponible actuellement.',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: spotifyWhite,
@@ -660,8 +660,9 @@ class _CategoryScreenState extends ConsumerState<CategoryScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              "We couldn't find any tracks for this category. "
-              'Try again or pick another one.',
+              'Réessayez ou choisissez une autre catégorie. '
+              'Aucune donnée n\'est inventée : seuls les contenus réels et '
+              'vérifiés sont affichés.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: spotifyLightGrey.withValues(alpha: 0.9),
@@ -1782,6 +1783,36 @@ class _SubCategoryRow extends ConsumerWidget {
   /// section is never rendered again by another one.
   final Set<String> usedArtists;
   final Map<String, List<MuzoItem>> claimed;
+
+  /// The mission-required empty state: when a sub-category has no verified
+  /// content (real <2/-episode round, network failure, or a failed strict
+  /// gate), it must say so instead of hiding or inventing anything.
+  Widget _emptyHint() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            sub,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: spotifyWhite,
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Aucun contenu vérifié disponible actuellement.',
+            style: TextStyle(color: spotifyLightGrey, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(
@@ -1797,10 +1828,10 @@ class _SubCategoryRow extends ConsumerWidget {
           ),
         ),
       ),
-      error: (_, __) => const SizedBox.shrink(),
+      error: (_, __) => _emptyHint(),
       data: (songs) {
         if (songs.isEmpty) {
-          return const SizedBox.shrink();
+          return _emptyHint();
         }
         // Runtime cross-section dedupe: claim each song's artist exactly once
         // per page. Claims are only committed when the section reaches the

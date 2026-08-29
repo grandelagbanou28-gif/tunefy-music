@@ -246,6 +246,10 @@ class ItunesApiService {
       channelName: artist,
       album: albumName != null ? MuzoAlbum(name: albumName, id: '') : null,
       audioUrl: null,
+      source: 'itunes',
+      sourceId: (r['trackId'] as num?)?.toString(),
+      sourceUrl: (r['previewUrl'] as String?) ?? '',
+      fetchedAt: DateTime.now(),
     );
   }
 
@@ -301,6 +305,10 @@ class ItunesApiService {
       album: show.isNotEmpty ? MuzoAlbum(name: show, id: '') : null,
       releaseDate: release,
       audioUrl: episodeUrl.isEmpty ? null : episodeUrl,
+      source: 'itunes podcast',
+      sourceId: (r['trackId'] as num?)?.toString(),
+      sourceUrl: episodeUrl.isEmpty ? null : episodeUrl,
+      fetchedAt: DateTime.now(),
     );
   }
 
@@ -317,6 +325,9 @@ class ItunesApiService {
       videoId: 'it_album_${r['collectionId']}',
       artists: artist != null ? [MuzoArtist(name: artist, id: null)] : null,
       channelName: artist,
+      source: 'itunes',
+      sourceId: (r['collectionId'] as num?)?.toString(),
+      fetchedAt: DateTime.now(),
     );
   }
 
@@ -330,6 +341,9 @@ class ItunesApiService {
       videoId: 'it_artist_${r['artistId']}',
       artists: name.isNotEmpty ? [MuzoArtist(name: name, id: null)] : null,
       channelName: name,
+      source: 'itunes',
+      sourceId: (r['artistId'] as num?)?.toString(),
+      fetchedAt: DateTime.now(),
     );
   }
 }

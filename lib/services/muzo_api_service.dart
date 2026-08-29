@@ -35,6 +35,15 @@ class MuzoApiService {
     _auth = AuthService(_storage);
   }
 
+  /// Copies a raw backend map and stamps provenance so every item remembers
+  /// where it came from and when it was fetched (never fabricated — just the
+  /// actual retrieval metadata).
+  static Map<String, dynamic> _taggedJson(dynamic raw, String source) {
+    return Map<String, dynamic>.from(raw as Map)
+      ..['source'] = source
+      ..['fetched_at'] = DateTime.now().toIso8601String();
+  }
+
   static const String _baseUrl = ApiConstants.mainApiBaseUrl;
 
   Map<String, String> get _headers {
@@ -389,7 +398,7 @@ class MuzoApiService {
 
       return filterIndianContent(feedList
           .where((e) => e is Map)
-          .map((json) => MuzoItem.fromJson(Map<String, dynamic>.from(json)))
+          .map((json) => MuzoItem.fromJson(_taggedJson(json, 'ytify')))
           .toList());
     } catch (e) {
       debugPrint('Error fetching quick picks: $e');
@@ -425,7 +434,10 @@ class MuzoApiService {
         debugPrint('UPNEXT: songs key is null');
         return [];
       }
-      return filterIndianContent(list.map((e) => MuzoItem.fromJson(Map<String, dynamic>.from(e)..putIfAbsent('resultType', () => 'song'))).toList());
+      return filterIndianContent(list
+          .map((e) => MuzoItem.fromJson(_taggedJson(e, 'ytify')
+            ..putIfAbsent('resultType', () => 'song')))
+          .toList());
     } catch (e) {
       debugPrint('Error fetching Up Next: $e');
       return [];
@@ -502,7 +514,7 @@ class MuzoApiService {
 
       final results = resultsJson
           .where((e) => e is Map)
-          .map((json) => MuzoItem.fromJson(Map<String, dynamic>.from(json)))
+          .map((json) => MuzoItem.fromJson(_taggedJson(json, 'ytify')))
           .toList();
       return MuzoSearchResponse(
         results: filterIndianContent(results, contextQuery: query),
@@ -528,7 +540,7 @@ class MuzoApiService {
       final List<dynamic> data = jsonDecode(response.body);
       return filterIndianContent(data
           .where((e) => e is Map)
-          .map((json) => MuzoItem.fromJson(Map<String, dynamic>.from(json)))
+          .map((json) => MuzoItem.fromJson(_taggedJson(json, 'ytify')))
           .toList());
     } catch (e) {
       return [];
