@@ -49,6 +49,8 @@ class _Beacon {
 
 const List<_Beacon> _beacons = [
   _Beacon('pop', jamendo: 'pop', audius: ['Pop'], ytify: 'pop'),
+  _Beacon('romance', jamendo: 'pop', audius: ['R&B/Soul'], ytify: 'romantic love songs'),
+  _Beacon('romantic', jamendo: 'pop', audius: ['R&B/Soul'], ytify: 'romantic love songs'),
   _Beacon('hip hop', jamendo: 'hiphop', audius: ['Hip-Hop/Rap'], ytify: 'hip hop'),
   _Beacon('rap', jamendo: 'hiphop', audius: ['Hip-Hop/Rap'], ytify: 'rap'),
   _Beacon('r&b', jamendo: 'rnb', audius: ['R&B/Soul'], ytify: 'r&b'),
@@ -340,6 +342,117 @@ const Map<String, GenrePlan> _overrides = {
     jamendoTag: 'electronic',
     audiusGenres: [],
     ytifyTerm: 'video game soundtrack',
+  ),
+
+  // ─── Romance / Love: real love-song terms across every source, so the
+  // sections stay genre-exact instead of falling back to generic mixed pop. ───
+  'mood|romantic': GenrePlan(
+    key: 'romantic',
+    jamendoTag: 'pop',
+    audiusGenres: ['R&B/Soul'],
+    ytifyTerm: 'romantic love songs',
+  ),
+  'romance|romantic pop': GenrePlan(
+    key: 'romantic pop',
+    jamendoTag: 'pop',
+    audiusGenres: ['Pop'],
+    ytifyTerm: 'romantic pop',
+  ),
+  'romance / love|romantic pop': GenrePlan(
+    key: 'romantic pop',
+    jamendoTag: 'pop',
+    audiusGenres: ['Pop'],
+    ytifyTerm: 'romantic pop',
+  ),
+  'romance|love songs': GenrePlan(
+    key: 'love songs',
+    jamendoTag: 'pop',
+    audiusGenres: ['R&B/Soul'],
+    ytifyTerm: 'love songs',
+  ),
+  'romance / love|love songs': GenrePlan(
+    key: 'love songs',
+    jamendoTag: 'pop',
+    audiusGenres: ['R&B/Soul'],
+    ytifyTerm: 'love songs',
+  ),
+  'romance|r&b love': GenrePlan(
+    key: 'r&b love',
+    jamendoTag: 'rnb',
+    audiusGenres: ['R&B/Soul'],
+    ytifyTerm: 'r&b love songs',
+  ),
+  'romance|slow jams': GenrePlan(
+    key: 'slow jams',
+    jamendoTag: 'rnb',
+    audiusGenres: [],
+    ytifyTerm: 'slow jams',
+  ),
+  'romance|afro love': GenrePlan(
+    key: 'afro love',
+    jamendoTag: 'africa',
+    audiusGenres: [],
+    ytifyTerm: 'afro love songs',
+  ),
+  'romance / love|afro love': GenrePlan(
+    key: 'afro love',
+    jamendoTag: 'africa',
+    audiusGenres: [],
+    ytifyTerm: 'afro love songs',
+  ),
+  'romance|french love': GenrePlan(
+    key: 'french love',
+    jamendoTag: 'pop',
+    audiusGenres: [],
+    ytifyTerm: 'french love songs',
+  ),
+  'romance / love|french love': GenrePlan(
+    key: 'french love',
+    jamendoTag: 'pop',
+    audiusGenres: [],
+    ytifyTerm: 'french love songs',
+  ),
+  'romance|wedding': GenrePlan(
+    key: 'wedding',
+    jamendoTag: 'pop',
+    audiusGenres: [],
+    ytifyTerm: 'wedding songs',
+  ),
+  'romance / love|wedding': GenrePlan(
+    key: 'wedding',
+    jamendoTag: 'pop',
+    audiusGenres: [],
+    ytifyTerm: 'wedding songs',
+  ),
+  'romance|heartbreak': GenrePlan(
+    key: 'heartbreak',
+    jamendoTag: 'pop',
+    audiusGenres: [],
+    ytifyTerm: 'heartbreak songs',
+  ),
+  'romance / love|heartbreak': GenrePlan(
+    key: 'heartbreak',
+    jamendoTag: 'pop',
+    audiusGenres: [],
+    ytifyTerm: 'heartbreak songs',
+  ),
+  'romance|valentine\'s day': GenrePlan(
+    key: 'valentines day',
+    jamendoTag: 'pop',
+    audiusGenres: [],
+    ytifyTerm: 'valentines day songs',
+  ),
+  'romance|first love': GenrePlan(
+    key: 'first love',
+    jamendoTag: 'pop',
+    audiusGenres: [],
+    ytifyTerm: 'first love songs',
+  ),
+  'romance|couple': GenrePlan(
+    key: 'couple',
+    jamendoTag: 'pop',
+    audiusGenres: [],
+    ytifyTerm: 'couple songs',
   ),
 };
 
