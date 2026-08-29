@@ -18,6 +18,8 @@ import 'package:muzo/services/itunes_api_service.dart';
 import 'package:muzo/services/trending_service.dart';
 import 'package:muzo/services/multi_api_service.dart';
 import 'package:muzo/services/relevance_engine.dart';
+import 'package:muzo/services/deezer_api_service.dart';
+import 'package:muzo/services/musicbrainz_service.dart';
 
 final searchControllerProvider = Provider<TextEditingController>((ref) {
   final controller = TextEditingController();
@@ -679,6 +681,11 @@ final categorySubSongsProvider =
     final seenIds = <String>{};
     final result = <MuzoItem>[];
 
+    /// MusicBrainz-confirmed artists (geo/genre evidence) that may bypass the
+    /// text gate — the ONLY exception to the strict rule, backed by real
+    /// database records, never a guess.
+    final mbWhitelist = <String>{};
+
     void addUnique(
       List<MuzoItem> batch, {
       int maxPerArtist = 1,
@@ -696,17 +703,21 @@ final categorySubSongsProvider =
           audit.rejectedBecause(CategoryRejectReason.junkTitle);
           continue;
         }
-        if (applyConstraint && !acceptsForCategory(song, constraint)) {
-          final score = categoryMatchScore(song, constraint);
-          audit.rejectedBecause(
-            score == 0
-                ? CategoryRejectReason.wrongCountry
-                : CategoryRejectReason.belowThreshold,
-          );
-          continue;
-        }
         final idKey = (song.videoId ?? '${song.title}|${song.displayArtist}')
             .toLowerCase();
+        if (applyConstraint && !acceptsForCategory(song, constraint)) {
+          if (idKey.isNotEmpty && mbWhitelist.contains(idKey)) {
+            song = song.copyWith(verified: true);
+          } else {
+            final score = categoryMatchScore(song, constraint);
+            audit.rejectedBecause(
+              score == 0
+                  ? CategoryRejectReason.wrongCountry
+                  : CategoryRejectReason.belowThreshold,
+            );
+            continue;
+          }
+        }
         if (idKey.isEmpty || seenIds.contains(idKey)) {
           audit.rejectedBecause(CategoryRejectReason.duplicate);
           continue;
@@ -739,9 +750,31 @@ final categorySubSongsProvider =
                   ? categoryMatchScore(song, constraint)
                   : null),
         );
-        audit.onAccepted();
+audit.onAccepted();
         result.add(song);
         if (result.length >= 15) break;
+      }
+    }
+
+    /// Returns the id-keys of [items] whose artist is geo/genre-confirmed by
+    /// MusicBrainz — authoritative rescue for strict-gate rejections only.
+    Future<Set<String>> _mbApprovedIds(List<MuzoItem> items) async {
+      if (!constraint.isGeoScoped || items.isEmpty) return const {};
+      try {
+        final approved = await ref
+            .read(musicBrainzServiceProvider)
+            .rescueMatches(
+              items,
+              geo: constraint.geo,
+              genre: constraint.hasGenre ? constraint.genre : null,
+            )
+            .timeout(const Duration(seconds: 6), onTimeout: () => const []);
+        return {
+          for (final s in approved)
+            (s.videoId ?? '${s.title}|${s.displayArtist}').toLowerCase(),
+        };
+      } catch (_) {
+        return const {};
       }
     }
 
@@ -920,13 +953,21 @@ final categorySubSongsProvider =
       final geoTerm = buildScopedSearchTerm(category, sub, scopedTerm ?? '');
 
       if (geoScoped) {
+        Future<void> addScoped(List<MuzoItem> raw) async {
+          final scoped = _prioritizeWestern(raw);
+          // MusicBrainz rescue: real database evidence (artist country/region
+          // + genre) may accept a candidate the strict text gate rejected.
+          mbWhitelist.addAll(await _mbApprovedIds(scoped));
+          addUnique(scoped);
+        }
+
         if (geoTerm.isNotEmpty) {
           try {
             final scopedBatch = await ref
                 .read(muzoApiServiceProvider)
                 .search(geoTerm, filter: 'songs')
                 .timeout(const Duration(seconds: 12));
-            addUnique(_prioritizeWestern(scopedBatch.results));
+            await addScoped(scopedBatch.results);
           } catch (_) {}
         }
         if (result.length < 7) {
@@ -935,7 +976,7 @@ final categorySubSongsProvider =
                 .read(muzoApiServiceProvider)
                 .search(geoTerm, filter: 'songs')
                 .timeout(const Duration(seconds: 12));
-            addUnique(_prioritizeWestern(scopedBatch.results));
+            await addScoped(scopedBatch.results);
           } catch (_) {}
         }
         if (result.length < 7 && geoTerm.split(' ').length > 1) {
@@ -945,7 +986,7 @@ final categorySubSongsProvider =
                 .read(muzoApiServiceProvider)
                 .search(flipped, filter: 'songs')
                 .timeout(const Duration(seconds: 12));
-            addUnique(_prioritizeWestern(scopedBatch.results));
+            await addScoped(scopedBatch.results);
           } catch (_) {}
         }
       } else {
@@ -966,7 +1007,8 @@ final categorySubSongsProvider =
       }
     }
 
-    // Last resort: genre batch from Jamendo/Audius/iTunes.
+    // Last resort: genre batch from real keyless sources, then Dezeer catalog
+    // metadata resolved to full-length playable tracks.
     if (result.isEmpty) {
       final plan = genrePlanFor(category, sub);
       if (!plan.isEmpty) {
@@ -985,6 +1027,25 @@ final categorySubSongsProvider =
               .search(subTerm, filter: 'songs')
               .timeout(const Duration(seconds: 10));
           addUnique(_prioritizeWestern(resp.results));
+        } catch (_) {}
+      }
+      if (result.isEmpty) {
+        // Dezeer: real catalog metadata (title/artist/album/cover) resolved
+        // through the main search to playable YouTube tracks — the same
+        // contract as chart seeds.
+        try {
+          final dzTerm = !plan.isEmpty
+              ? plan.ytifyTerm
+              : (isAll ? category : queryForSubCategory(category, sub));
+          final discovered =
+              await ref.read(deezerApiServiceProvider).searchTracks(dzTerm,
+                  limit: 8);
+          final playable = await ref
+              .read(multiApiServiceProvider)
+              .resolveToPlayable(discovered, max: 6);
+          addUnique(playable);
+          debugPrint(
+              '[Fallback-Deezer] "$category > $sub" resolved=${playable.length}');
         } catch (_) {}
       }
     }

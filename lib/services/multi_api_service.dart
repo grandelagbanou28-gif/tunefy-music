@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:muzo/models/muzo_item.dart';
 import 'package:muzo/services/musicbrainz_service.dart';
+import 'package:muzo/services/deezer_api_service.dart';
 import 'package:muzo/services/spotify_unofficial_service.dart';
 import 'package:muzo/services/itunes_api_service.dart';
 import 'package:muzo/services/muzo_api_service.dart';
@@ -38,6 +39,7 @@ class MultiApiService {
       _safe(() => spotify.search(query), 'Spotify'),
       _safe(() => ItunesApiService().searchSongsFrUs(query, limit: 10),
           'iTunes'),
+      _safe(() => DeezerApiService().searchTracks(query, limit: 10), 'Deezer'),
     ];
 
     final results = await Future.wait(futures, eagerError: false);

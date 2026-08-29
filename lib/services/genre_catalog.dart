@@ -4,6 +4,8 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:muzo/services/audius_api_service.dart';
 import 'package:muzo/services/jamendo_api_service.dart';
+import 'package:muzo/services/ccmixter_api_service.dart';
+import 'package:muzo/services/internet_archive_service.dart';
 import 'package:muzo/services/itunes_api_service.dart';
 import 'package:muzo/models/muzo_item.dart';
 
@@ -415,9 +417,11 @@ final itunesApiServiceProvider = Provider<ItunesApiService>((ref) {
 bool hasGenrePlan(String category, String sub) =>
     !genrePlanFor(category, sub).isEmpty;
 
-/// Fetch a genre-exact batch mixing Jamendo tag + Audius genre + iTunes term,
-/// in parallel. Used by section providers instead of the old generic
-/// "hits/trending" fallback that produced off-genre content.
+/// Fetch a genre-exact batch mixing Jamendo tag + Audius genre + iTunes term +
+/// ccMixter tags + Internet Archive collections, in parallel. Used by section
+/// providers instead of the old generic "hits/trending" fallback that produced
+/// off-genre content. ccMixter and Internet Archive return directly-streamable
+/// full-length real files (user_track), so they are genuinely playable.
 Future<List<MuzoItem>> fetchGenreBatch(
   Ref ref,
   GenrePlan plan, {
@@ -427,6 +431,8 @@ Future<List<MuzoItem>> fetchGenreBatch(
   final jamendo = ref.read(jamendoApiServiceProvider);
   final audius = ref.read(audiusApiServiceProvider);
   final itunes = ref.read(itunesApiServiceProvider);
+  final ccmixter = ref.read(ccmixterApiServiceProvider);
+  final ia = ref.read(internetArchiveServiceProvider);
 
   final futures = <Future<List<MuzoItem>>>[
     if (plan.jamendoTag != null)
@@ -438,6 +444,10 @@ Future<List<MuzoItem>> fetchGenreBatch(
         return t.map((t) => t.toMuzoItem()).toList();
       }),
     itunes.searchSongsFrUs(plan.itunesTerm, limit: perSource),
+    // Full-length CC-licensed real files.
+    ccmixter.tracksByTag(plan.ytifyTerm, limit: perSource),
+    // Real audio collections from the Internet Archive (first N).
+    ia.audioByTerm(plan.ytifyTerm, limit: perSource <= 4 ? perSource : 4),
   ];
 
   final batches = await Future.wait(futures);
