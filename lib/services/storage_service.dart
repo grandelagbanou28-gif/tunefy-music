@@ -6,6 +6,7 @@ import 'package:muzo/models/muzo_item.dart';
 import 'package:muzo/models/user_data.dart';
 import 'package:muzo/services/listening_stats_service.dart';
 import 'package:muzo/services/muzo_api_service.dart';
+import 'package:muzo/services/supabase_store.dart';
 import 'package:muzo/services/ytm_home.dart';
 import 'package:http/http.dart' as http;
 
@@ -33,6 +34,9 @@ class StorageService {
     _apiInstance ??= MuzoApiService(this);
     return _apiInstance!;
   }
+
+  SupabaseStore? _supabase;
+  SupabaseStore? get supabase => _supabase;
 
   // In-memory state with Notifiers
   final ValueNotifier<List<MuzoItem>> _historyNotifier = ValueNotifier([]);
@@ -131,7 +135,172 @@ class StorageService {
     }
 
     // API is now lazily initialized
+    // Supabase seed + merge happens in the background (await-free so the app
+    // starts immediately even offline).
+    _initSupabase();
     debugPrint('StorageService initialized');
+  }
+
+  // ─── Supabase (durable DB layer, local Hive always wins as cache) ─────
+  Future<void> _initSupabase() async {
+    try {
+      final store = SupabaseStore();
+      _supabase = store;
+      await store.init();
+      debugPrint('Supabase ready: ${store.ready} uid=${store.uid}');
+      if (!store.ready) return;
+      await _mergeRemote();
+    } catch (e) {
+      debugPrint('Supabase unavailable (local-only mode): $e');
+      _supabase = null;
+    }
+  }
+
+  /// Runs [dbOp] on Supabase first; falls back to the legacy HTTP API when
+  /// Supabase is unavailable or rejects the write.
+  Future<void> _dbSync(
+    Future<void> Function(SupabaseStore s) dbOp,
+    Future<void> Function() fallback,
+  ) async {
+    final s = _supabase;
+    if (s != null && s.ready) {
+      try {
+        await dbOp(s);
+        return;
+      } catch (e) {
+        debugPrint('Supabase sync failed, falling back: $e');
+      }
+    }
+    try {
+      await fallback();
+    } catch (e) {
+      debugPrint('Legacy API sync failed: $e');
+    }
+  }
+
+  /// One-shot bidirectional merge at startup: union of local (Hive) and remote
+  /// (Supabase) data, then the merged result is pushed back to the DB.
+  Future<void> _mergeRemote() async {
+    final s = _supabase;
+    if (s == null) return;
+    await _mergeFavorites(s);
+    await _mergeHistory(s);
+    await _mergeSubscriptions(s);
+    await _mergePlaylists(s);
+  }
+
+  Future<void> _mergeFavorites(SupabaseStore s) async {
+    try {
+      final remote = await s.fetchFavorites();
+      final local = _favoritesNotifier.value;
+      final merged = List<MuzoItem>.from(local);
+      final seen = local.map((e) => e.videoId).toSet();
+      for (final r in remote) {
+        if (r.videoId != null && !seen.contains(r.videoId)) {
+          merged.add(r);
+          seen.add(r.videoId);
+        }
+      }
+      if (merged.length != local.length) {
+        _favoritesNotifier.value = merged;
+        _saveFavoritesToCache(merged);
+      }
+      for (final m in merged) {
+        if (m.videoId == null) continue;
+        if (remote.any((r) => r.videoId == m.videoId)) continue;
+        try {
+          await s.addToFavorites(m);
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('Merge favorites failed: $e');
+    }
+  }
+
+  Future<void> _mergeHistory(SupabaseStore s) async {
+    try {
+      final remote = await s.fetchHistory();
+      final local = _historyNotifier.value;
+      final merged = List<MuzoItem>.from(local);
+      final seen = local.map((e) => e.videoId).toSet();
+      for (final r in remote) {
+        if (r.videoId != null && !seen.contains(r.videoId)) {
+          if (merged.length >= SupabaseStore.maxHistoryLength) break;
+          merged.add(r);
+          seen.add(r.videoId);
+        }
+      }
+      if (merged.length != local.length) {
+        _historyNotifier.value = merged;
+        _saveHistoryToCache(merged);
+      }
+      for (final m in merged) {
+        if (m.videoId == null) continue;
+        if (remote.any((r) => r.videoId == m.videoId)) continue;
+        try {
+          await s.addToHistory(m);
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('Merge history failed: $e');
+    }
+  }
+
+  Future<void> _mergeSubscriptions(SupabaseStore s) async {
+    try {
+      final remote = await s.fetchSubscriptions();
+      final local = _subscriptionsNotifier.value;
+      String keyOf(Channel c) => '${c.channelId ?? ''}|${c.name}';
+      final merged = List<Channel>.from(local);
+      final seen = local.map(keyOf).toSet();
+      for (final r in remote) {
+        final k = keyOf(r);
+        if (!seen.contains(k)) {
+          merged.add(r);
+          seen.add(k);
+        }
+      }
+      if (merged.length != local.length) {
+        _subscriptionsNotifier.value = merged;
+        _saveSubscriptionsToCache(merged);
+      }
+      for (final m in merged) {
+        final k = keyOf(m);
+        if (remote.any((r) => keyOf(r) == k)) continue;
+        try {
+          await s.addSubscription(m);
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('Merge subscriptions failed: $e');
+    }
+  }
+
+  Future<void> _mergePlaylists(SupabaseStore s) async {
+    try {
+      final remote = await s.fetchPlaylists();
+      final local = _playlistsNotifier.value;
+      final merged = List<Playlist>.from(local);
+      final seen = local.map((p) => p.name).toSet();
+      for (final r in remote) {
+        if (!seen.contains(r.name)) {
+          merged.add(r);
+          seen.add(r.name);
+        }
+      }
+      if (merged.length != local.length) {
+        _playlistsNotifier.value = merged;
+        _savePlaylistsToCache(merged);
+      }
+      for (final m in merged) {
+        if (remote.any((r) => r.name == m.name)) continue;
+        try {
+          await s.savePlaylist(m);
+        } catch (_) {}
+      }
+    } catch (e) {
+      debugPrint('Merge playlists failed: $e');
+    }
   }
 
   final ListeningStatsService stats = ListeningStatsService();
@@ -208,7 +377,10 @@ class StorageService {
     _saveHistoryToCache(current);
 
     try {
-      await _api.addToHistory(result);
+      await _dbSync(
+        (s) => s.addToHistory(result),
+        () => _api.addToHistory(result),
+      );
     } catch (e) {
       debugPrint('Error adding to history API: $e');
       // We don't set errorNotifier here to avoid spamming user on every song play
@@ -225,7 +397,10 @@ class StorageService {
     _saveHistoryToCache(current);
 
     try {
-      await _api.removeFromHistory(videoId);
+      await _dbSync(
+        (s) => s.removeFromHistory(videoId),
+        () => _api.removeFromHistory(videoId),
+      );
     } catch (e) {
       errorNotifier.value = 'Failed to remove from history: $e';
       // Revert optimistic update?
@@ -241,7 +416,7 @@ class StorageService {
   Future<void> clearHistory() async {
     isLoadingNotifier.value = true;
     try {
-      await _api.clearHistory();
+      await _dbSync((s) => s.clearHistory(), () => _api.clearHistory());
       _historyNotifier.value = [];
       _saveHistoryToCache([]);
     } catch (e) {
@@ -255,25 +430,30 @@ class StorageService {
 
   Future<void> createPlaylist(String name) async {
     // Playlists are auto-created by the API when a song is added.
-    // Just update local state optimistically.
+    // Just update local state optimistically (and seed the DB row).
     final current = List<Playlist>.from(_playlistsNotifier.value);
     if (!current.any((p) => p.name == name)) {
-      current.add(Playlist(
+      final playlist = Playlist(
         id: 0,
         name: name,
         createdAt: DateTime.now().toIso8601String(),
         songCount: 0,
         songs: [],
-      ));
+      );
+      current.add(playlist);
       _playlistsNotifier.value = current;
       _savePlaylistsToCache(current);
+      await _dbSync((s) => s.savePlaylist(playlist), () async {});
     }
   }
 
   Future<void> deletePlaylist(String name) async {
     isLoadingNotifier.value = true;
     try {
-      await _api.deletePlaylist(name);
+      await _dbSync(
+        (s) => s.deletePlaylist(name),
+        () => _api.deletePlaylist(name),
+      );
       final current = List<Playlist>.from(_playlistsNotifier.value);
       current.removeWhere((p) => p.name == name);
       _playlistsNotifier.value = current;
@@ -297,15 +477,19 @@ class StorageService {
       if (!songs.any((s) => s.videoId == result.videoId)) {
         isLoadingNotifier.value = true;
         try {
-          await _api.addToPlaylist(name, result);
-          songs.add(result);
-          current[playlistIndex] = Playlist(
+          final updated = Playlist(
             id: playlist.id,
             name: playlist.name,
             createdAt: playlist.createdAt,
-            songCount: songs.length,
-            songs: songs,
+            songCount: songs.length + 1,
+            songs: [...songs, result],
           );
+          await _dbSync(
+            (s) => s.savePlaylist(updated),
+            () => _api.addToPlaylist(name, result),
+          );
+          songs.add(result);
+          current[playlistIndex] = updated;
           _playlistsNotifier.value = current;
           _savePlaylistsToCache(current);
         } catch (e) {
@@ -339,7 +523,10 @@ class StorageService {
 
       isLoadingNotifier.value = true;
       try {
-        await _api.removeSongFromPlaylist(name, videoId);
+        await _dbSync(
+          (s) => s.savePlaylist(current[playlistIndex]),
+          () => _api.removeSongFromPlaylist(name, videoId),
+        );
       } catch (e) {
         errorNotifier.value = 'Failed to remove from playlist: $e';
       } finally {
@@ -457,9 +644,15 @@ class StorageService {
 
     try {
       if (index != -1) {
-        await _api.removeFromFavorites(result.videoId!);
+        await _dbSync(
+          (s) => s.removeFromFavorites(result.videoId!),
+          () => _api.removeFromFavorites(result.videoId!),
+        );
       } else {
-        await _api.addToFavorites(result);
+        await _dbSync(
+          (s) => s.addToFavorites(result),
+          () => _api.addToFavorites(result),
+        );
       }
     } catch (e) {
       debugPrint('Failed to sync favorites: $e');
@@ -496,11 +689,14 @@ class StorageService {
     for (final s in songs) {
       if (s.videoId == null) continue;
       try {
-        if (favorite) {
-          await _api.addToFavorites(s);
-        } else {
-          await _api.removeFromFavorites(s.videoId!);
-        }
+        await _dbSync(
+          (db) => favorite
+              ? db.addToFavorites(s)
+              : db.removeFromFavorites(s.videoId!),
+          () => favorite
+              ? _api.addToFavorites(s)
+              : _api.removeFromFavorites(s.videoId!),
+        );
       } catch (e) {
         debugPrint('Failed to sync favorite "${s.title}": $e');
       }
@@ -574,12 +770,18 @@ class StorageService {
       if (index != -1) {
         // Unsubscribe — use channelId or name as the identifier
         final id = channel.channelId ?? channel.name;
-        await _api.removeSubscription(id);
+        await _dbSync(
+          (s) => s.removeSubscription(id),
+          () => _api.removeSubscription(id),
+        );
         current.removeAt(index);
         _subscriptionsNotifier.value = current;
       } else {
         // Subscribe
-        await _api.addSubscription(channel);
+        await _dbSync(
+          (s) => s.addSubscription(channel),
+          () => _api.addSubscription(channel),
+        );
         current.insert(0, channel);
         _subscriptionsNotifier.value = current;
       }
